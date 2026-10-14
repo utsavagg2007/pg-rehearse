@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+.uv-cache
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.pg-rehearse
+dist
+.env
+.env.*

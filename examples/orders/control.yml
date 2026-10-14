@@ -1,0 +1,12 @@
+schema_version: 1
+name: orders-additive-control
+postgres_image: postgres:17
+schema_path: schema/base.sql
+fixtures_path: fixtures/orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-v1.yml
+migrations:
+  - id: add-optional-note
+    path: migrations/add_order_note.sql
+    transaction: transaction

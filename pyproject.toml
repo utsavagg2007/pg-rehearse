@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pg-rehearse"
+version = "0.1.0"
+description = "A PostgreSQL migration and deployment rehearsal CLI (foundation stage)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "docker>=7.1,<8",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic>=2.10,<3",
+  "PyYAML>=6.0.2,<7",
+  "rich>=13.9,<15",
+  "typer>=0.15,<1",
+]
+
+[project.scripts]
+pg-rehearse = "pg_rehearse.cli:app"
+
+[dependency-groups]
+dev = [
+  "build>=1.2,<2",
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<10",
+  "pytest-cov>=6,<8",
+  "ruff>=0.11,<1",
+  "types-docker>=7.1,<8",
+  "types-PyYAML>=6.0,<7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pg_rehearse"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src", "/tests", "/examples", "/docs", "/docker", "/benchmarks", "/evaluation",
+  "/*.md", "/pyproject.toml", "/uv.lock", "/Makefile", "/.python-version",
+  "/.github", "/.gitignore", "/.dockerignore", "/.editorconfig",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "integration: requires disposable PostgreSQL in Docker",
+  "e2e: exercises a complete rehearsal through the CLI",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/pg_rehearse"]
+strict = true
+
+[tool.coverage.run]
+source = ["pg_rehearse"]
+
+[tool.coverage.report]
+skip_empty = true

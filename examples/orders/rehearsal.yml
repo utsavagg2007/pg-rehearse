@@ -1,0 +1,17 @@
+schema_version: 1
+name: orders-column-rename
+postgres_image: postgres:17
+schema_path: schema/base.sql
+fixtures_path: fixtures/orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-v1.yml
+  candidate: contracts/candidate-v2.yml
+migrations:
+  - id: rename-user-name
+    path: migrations/rename_user_name.sql
+    transaction: transaction
+timeouts:
+  startup_seconds: 60
+  statement_ms: 5000
+  lock_ms: 1000

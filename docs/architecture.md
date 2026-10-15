@@ -8,10 +8,14 @@ statement alone does not establish compatibility.
 
 ## Current implementation
 
-The CLI can check its environment and load strict configuration and contract
-models. It resolves input files below the configuration directory, rejects
-duplicate YAML keys and IDs, and separates completion from verdict. The remaining
-pipeline modules are placeholders with documented responsibilities.
+The CLI checks its environment, loads configuration/contracts, and runs a disposable
+PostgreSQL lifecycle using `sandbox`. The runtime records allocation intents before
+creating resources, saves returned IDs atomically, verifies TCP readiness, and
+cleans up using matched ownership labels. `recover` can finish an inactive run.
+The full migration, workload, role-isolated worker, analysis, and reporting pipeline
+remains pending. Preflight now parses PostgreSQL 17 SQL, checks the documented
+supported subset, validates typed fixtures, and snapshots original inputs. The
+`validated_environment` boundary finishes this work before constructing a runtime.
 
 ## Target run lifecycle
 

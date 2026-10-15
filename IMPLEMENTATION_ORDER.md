@@ -1,11 +1,13 @@
 # Implementation order
 
-Updated: 2026-10-14. The scaffold is complete; the database feature roadmap is
-pending. Follow this sequence from the shared conversation. Configuration models
-and structural validation are already available, but feature 2 still needs SQL
-preflight. Update `PROGRESS.md` as each acceptance criterion is actually verified.
+Updated: 2026-10-15. Features 1 and 2 are implemented and verified. Features 3–19
+remain pending or partial. Follow this sequence from the shared conversation.
+Update `PROGRESS.md` as each acceptance criterion is actually verified.
 
 ## 1. Docker provisioning, ownership, cleanup, and recovery
+
+Status: implemented. Use `pg-rehearse sandbox` and `pg-rehearse recover`.
+Real Docker verification is recorded in `PROGRESS.md` and `docs/runtime.md`.
 
 Modules: `runtime/docker.py`, `runtime/manifest.py`, `runtime/cleanup.py`,
 `orchestrator.py`.
@@ -21,6 +23,10 @@ readiness failure, cleanup after partial allocation, refusal to remove unrelated
 resources, and recovery after coordinator interruption. Record cleanup failures.
 
 ## 2. Strict configuration, path validation, and SQL preflight
+
+Status: implemented. `validate` performs complete preflight without Docker, and
+`validated_environment` gates rehearsal provisioning on that result. See
+`docs/preflight.md` for the bounded SQL matrix and `PROGRESS.md` for test evidence.
 
 Modules: `config.py`, `models.py`, `migration/preflight.py`, `migration/classify.py`.
 

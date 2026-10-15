@@ -20,7 +20,7 @@ def check_environment(*, skip_docker: bool = False) -> list[Diagnostic]:
     checks = [
         Diagnostic("Python", sys.version_info >= (3, 12), platform.python_version()),
     ]
-    for dependency in ("typer", "rich", "pydantic", "PyYAML", "psycopg", "docker"):
+    for dependency in ("typer", "rich", "pydantic", "PyYAML", "psycopg", "docker", "pglast"):
         try:
             version = importlib.metadata.version(dependency)
             checks.append(Diagnostic(dependency, True, version))

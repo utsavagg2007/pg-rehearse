@@ -1,4 +1,4 @@
-.PHONY: setup check test lint format typecheck build doctor
+.PHONY: setup check test integration lint format typecheck build doctor
 
 setup:
 	uv sync --locked
@@ -7,6 +7,9 @@ check: lint typecheck test
 
 test:
 	uv run --locked pytest
+
+integration:
+	uv run --locked pytest --run-docker
 
 lint:
 	uv run --locked ruff check .

@@ -2,6 +2,9 @@
 
 Status: accepted for the scaffold, 2026-10-14.
 
+Update 2026-10-15: the blueprint PDF has now been supplied and reviewed. Its
+disposable runtime architecture is implemented and verified in ADR 0002.
+
 Use Python 3.12+, Typer/Rich, Pydantic/PyYAML, Psycopg 3, Docker SDK, pytest,
 Ruff, and mypy. Use a `src` package and an editable installation managed by uv.
 Keep exact resolved versions in `uv.lock`. Python 3.14 is selected locally because

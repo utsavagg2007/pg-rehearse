@@ -1,6 +1,6 @@
 # Project layout
 
-Updated: 2026-10-14. The project is in the foundation stage.
+Updated: 2026-10-15. The disposable runtime and PostgreSQL 17 input preflight are implemented.
 
 ```text
 pg-rehearse/
@@ -18,15 +18,15 @@ pg-rehearse/
 ├── src/pg_rehearse/
 │   ├── __init__.py                Package version
 │   ├── __main__.py                python -m pg_rehearse entry point
-│   ├── cli.py                     doctor, validate, reserved run, version, help
+│   ├── cli.py                     doctor, validate, sandbox, recover, reserved run
 │   ├── config.py                  YAML, path and contract validation
 │   ├── models.py                  Configuration and evidence contracts
 │   ├── doctor.py                  Read-only environment diagnostics
 │   ├── errors.py                  Failure types and exit-code contract
-│   ├── orchestrator.py            Planned coordinator
+│   ├── orchestrator.py            Disposable lifecycle coordinator; full pipeline pending
 │   ├── worker.py                  Planned worker; refuses execution today
 │   ├── runtime/                   Provisioning, ownership, cleanup, roles
-│   ├── fixtures/                  Seed, immutable templates, fresh clones
+│   ├── fixtures/                  Typed row validation; seed/templates/clones planned
 │   ├── migration/                 Preflight, support classification, execution
 │   ├── workload/                  Contracts, SQL runner, assertions, sessions
 │   ├── analysis/                  Compatibility, coverage, locks, timings, plans
@@ -42,31 +42,41 @@ pg-rehearse/
 │   ├── schema/base.sql            Users and orders schema
 │   ├── fixtures/orders.yml        Two users and two orders
 │   ├── contracts/                 Deployed-v1 and candidate-v2 query contracts
-│   ├── migrations/                Rename and additive control SQL
+│   ├── migrations/                Rename and supported B-tree control SQL
+│   ├── unsupported/               Rejected ADD COLUMN counterexample
 │   └── apps/                      Real application probes planned for feature 10
 ├── tests/
-│   ├── unit/                      39 tests across four files
-│   ├── integration/               Documented real-PostgreSQL test plan
+│   ├── unit/                      155 unit cases across eight files
+│   ├── integration/               17 real PostgreSQL cases across three files
 │   └── e2e/                       Documented complete-CLI test plan
 ├── docker/worker.Dockerfile        Foundation worker build template
 ├── docs/
 │   ├── quickstart.md
 │   ├── architecture.md
-│   └── decisions/                 Accepted foundation and planned runtime ADRs
+│   ├── runtime.md                 Lifecycle API, CLI, recovery, limits
+│   ├── preflight.md               SQL matrix, strict inputs, allocation gate
+│   └── decisions/                 Foundation and verified runtime ADRs
 ├── benchmarks/                    Performance acceptance plan
 ├── evaluation/                    Labeled-case acceptance plan
-└── .github/workflows/ci.yml        Python 3.12/3.14 foundation CI
+└── .github/workflows/ci.yml        Python 3.12/3.14 unit and runtime CI
 ```
 
 ## Implemented modules
 
 | Module | Working responsibility |
 | --- | --- |
-| `cli.py` | Help/version, read-only diagnostics, structural input validation, inconclusive run boundary |
-| `config.py` | Safe YAML, duplicate-key rejection, contained relative paths, existing files, contract loading |
+| `cli.py` | Help/version, diagnostics, full input preflight, sandbox lifecycle, recovery, inconclusive run boundary |
+| `config.py` | Strict bounded YAML and file snapshots, typed fixture validation, SQL preflight and hashes |
 | `models.py` | Run inputs, query expectations, recorded operation evidence, coverage, verdict and cleanup contracts |
 | `doctor.py` | Python/dependency versions and bounded Docker daemon probe |
 | `errors.py` | Shared exceptions and stable exit codes |
+| `orchestrator.py` | Validated allocation gate, sandbox lifecycle and signals; full migration pipeline pending |
+| `runtime/docker.py` | PG17 image resolution, internal network, bounded readiness, temporary storage, lifecycle context |
+| `runtime/manifest.py` | Atomic allocation intents/IDs and active-run locking |
+| `runtime/cleanup.py` | Ownership-checked teardown and explicit crash recovery |
+| `migration/preflight.py` | PostgreSQL 17 AST parsing, spans, source hashes, binding checks |
+| `migration/classify.py` | Baseline catalog and bounded migration/contract SQL classification |
+| `fixtures/validate.py` | Typed rows, required values, key uniqueness, and fixture parent references |
 | `__init__.py`, `__main__.py` | Version and module entry point |
 
 The eleven package `__init__.py` files establish namespaces. They do not implement
@@ -74,24 +84,18 @@ database features.
 
 ## Planned modules
 
-Each of these 39 modules is explicitly labeled as a placeholder. Docstrings
+Each of these 33 modules is explicitly labeled as a placeholder. Docstrings
 describe responsibilities; they are not working feature implementations. The
 worker additionally exits inconclusive when invoked directly.
 
 | Module | Feature order | Responsibility |
 | --- | --- | --- |
-| `orchestrator.py` | 1–7 | Coordinate validation, resource provisioning, worker execution, evidence, reports, and cleanup. |
 | `worker.py` | 3–7 | Execute experiments inside the run network with scoped database credentials and no Docker socket. |
-| `runtime/docker.py` | 1 | Provision labeled PostgreSQL 17 containers and per-run networks; enforce bounded readiness. |
-| `runtime/manifest.py` | 1 | Persist run IDs and resource IDs atomically without storing credentials. |
-| `runtime/cleanup.py` | 1 | Verify ownership before removal and support interrupted-run recovery. |
 | `runtime/roles.py` | 3 | Create narrowly scoped setup, migration, workload, and observer database roles. |
 | `fixtures/seed.py` | 4 | Load baseline schemas and validated deterministic fixture data. |
 | `fixtures/clone.py` | 8 | Create independent database clones with no active template sessions. |
 | `fixtures/template.py` | 8 | Build and verify immutable templates keyed by schema and fixture identity. |
 | `migration/executor.py` | 6 | Execute ordered migration steps with declared transaction modes and error rollback. |
-| `migration/preflight.py` | 2 | Parse and classify supported SQL before allocating any runtime resources. |
-| `migration/classify.py` | 2, 11 | Classify rename, index, and CHECK operations with unsupported-input evidence. |
 | `workload/contracts.py` | 5 | Prepare query contracts for execution and phase-qualified coverage. |
 | `workload/runner.py` | 5 | Execute parameterized operations with deadlines and capture SQLSTATE. |
 | `workload/assertions.py` | 5 | Compare returned columns, rows, and row counts against semantic expectations. |

@@ -7,6 +7,6 @@ seed: 42
 contracts:
   deployed: contracts/deployed-v1.yml
 migrations:
-  - id: add-optional-note
-    path: migrations/add_order_note.sql
+  - id: add-order-user-index
+    path: migrations/create_order_user_index.sql
     transaction: transaction

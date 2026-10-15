@@ -1,6 +1,6 @@
 # Project instructions
 
-This repository is at the foundation stage. Read `PROGRESS.md` and
+This repository has a working disposable runtime and strict SQL preflight. Read `PROGRESS.md` and
 `IMPLEMENTATION_ORDER.md` before implementing the next feature.
 
 Update `PROGRESS.md` after every implementation change with completed behavior,

@@ -16,7 +16,7 @@ and run `pg-rehearse doctor` for the daemon check. No containers are provisioned
 pg-rehearse run --config examples/orders/rehearsal.yml
 ```
 
-At the foundation stage this returns **4**, explicitly reporting that the run
+This currently returns **4**, explicitly reporting that the migration run
 pipeline has not been implemented. Validation does not prove SQL compatibility.
 
 To install in another checkout, install Python 3.12+ and uv, then run
@@ -30,7 +30,23 @@ directories are excluded from version control. If recreating an environment on
 this Mac produces the same issue, use `UV_PROJECT_ENVIRONMENT=venv uv sync --locked`
 and activate `venv/bin/activate`.
 
-Next, follow feature 1 in `IMPLEMENTATION_ORDER.md`: owned PostgreSQL provisioning
-and reliable cleanup. Once features 1–7 work, the rename example should produce
+The disposable runtime is implemented. Start Docker Desktop, then run:
+
+```sh
+docker pull postgres:17
+pg-rehearse sandbox
+```
+
+The command verifies readiness and removes its own database and network. The
+printed manifest records resource IDs, image identity, and cleanup status. Use
+`pg-rehearse recover --manifest <printed-manifest-path>` after a hard crash.
+See `docs/runtime.md` for supported options, deadlines, and failure behavior.
+
+Step 2 is also implemented: `validate` parses PostgreSQL 17 SQL, validates fixture
+rows and paths, and checks migration support and transaction modes. No Docker
+resources are allocated by validation. See `docs/preflight.md` for accepted inputs.
+
+Next, follow feature 3 in `IMPLEMENTATION_ORDER.md`: isolated workers and scoped
+database roles. Once features 1–7 work, the rename example should produce
 SQLSTATE `42703`, a compatibility failure, and exit code 1; the additive control
 should pass with exit code 0.

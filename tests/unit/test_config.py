@@ -50,7 +50,7 @@ def test_rejects_parent_path_escape(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
     (tmp_path / "outside.sql").write_text("SELECT 1;")
-    with pytest.raises(ConfigurationError, match="escapes"):
+    with pytest.raises(ConfigurationError, match="traversal|escapes"):
         resolve_input(project, Path("../outside.sql"))
 
 

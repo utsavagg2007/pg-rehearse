@@ -1,4 +1,4 @@
-name: Foundation checks
+name: Preflight and disposable runtime checks
 
 on:
   push:
@@ -30,8 +30,12 @@ jobs:
           uv run --locked ruff format --check .
       - name: Type checks
         run: uv run --locked mypy
-      - name: Foundation tests
-        run: uv run --locked pytest --junitxml=.pg-rehearse/test-results.xml
+      - name: Prepare the verified PostgreSQL 17 image
+        run: |
+          docker pull postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+          docker tag postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3 postgres:17
+      - name: Unit and real PostgreSQL lifecycle tests
+        run: uv run --locked pytest --run-docker --junitxml=.pg-rehearse/test-results.xml
       - name: CLI checks
         run: |
           uv run --locked pg-rehearse --version

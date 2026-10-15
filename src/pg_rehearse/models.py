@@ -1,10 +1,24 @@
 """Configuration and evidence contracts shared across the future run pipeline."""
 
+from __future__ import annotations
+
+import math
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 from pg_rehearse.errors import ExitCode
 
@@ -13,37 +27,102 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+POSTGRES_IMAGE_PATTERN = r"^postgres:17(?:\.[0-9]+)?(?:-alpine)?(?:@sha256:[a-f0-9]{64})?$"
+
+
+def relative_path(value: object) -> Path:
+    if isinstance(value, Path):
+        return value
+    if not isinstance(value, str) or not value.strip() or any(ord(c) < 32 for c in value):
+        raise ValueError("Expected a nonempty relative file path without control characters")
+    return Path(value)
+
+
+def transaction_mode(value: object) -> TransactionMode:
+    if isinstance(value, TransactionMode):
+        return value
+    if not isinstance(value, str):
+        raise ValueError("Transaction mode must be transaction or autocommit")
+    return TransactionMode(value)
+
+
+RelativePath = Annotated[Path, BeforeValidator(relative_path)]
+Scalar = StrictStr | StrictBool | StrictInt | StrictFloat | None
+
+
+class InputModel(StrictModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    @field_validator("schema_version", mode="before", check_fields=False)
+    @classmethod
+    def exact_schema_version(cls, value: object) -> object:
+        if type(value) is not int or value != 1:
+            raise ValueError("schema_version must be integer 1")
+        return value
+
+    @model_validator(mode="after")
+    def finite_values(self) -> Self:
+        def visit(value: object) -> None:
+            if isinstance(value, str):
+                if "\x00" in value:
+                    raise ValueError("NUL characters are not supported")
+                try:
+                    value.encode("utf-8")
+                except UnicodeError as exc:
+                    raise ValueError("Strings must contain valid UTF-8 characters") from exc
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("NaN and infinity are not supported")
+            if isinstance(value, dict):
+                for item in value.values():
+                    visit(item)
+            elif isinstance(value, list):
+                for item in value:
+                    visit(item)
+
+        for value in self.__dict__.values():
+            visit(value)
+        return self
+
+
 class TransactionMode(StrEnum):
     TRANSACTION = "transaction"
     AUTOCOMMIT = "autocommit"
 
 
-class Timeouts(StrictModel):
+class Timeouts(InputModel):
     startup_seconds: int = Field(default=60, gt=0, le=600, strict=True)
     statement_ms: int = Field(default=5000, gt=0, le=600_000, strict=True)
     lock_ms: int = Field(default=1000, gt=0, le=600_000, strict=True)
 
-
-class MigrationStep(StrictModel):
-    id: str = Field(min_length=1, pattern=r"^[a-zA-Z0-9_-]+$")
-    path: Path
-    transaction: TransactionMode = TransactionMode.TRANSACTION
-
-
-class ContractPaths(StrictModel):
-    deployed: Path
-    candidate: Path | None = None
+    @model_validator(mode="after")
+    def coherent_deadlines(self) -> Self:
+        if self.lock_ms > self.statement_ms:
+            raise ValueError("lock_ms must not exceed statement_ms")
+        return self
 
 
-class RunSpec(StrictModel):
+class MigrationStep(InputModel):
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
+    path: RelativePath
+    transaction: Annotated[TransactionMode, BeforeValidator(transaction_mode)] = (
+        TransactionMode.TRANSACTION
+    )
+
+
+class ContractPaths(InputModel):
+    deployed: RelativePath
+    candidate: RelativePath | None = None
+
+
+class RunSpec(InputModel):
     schema_version: Literal[1] = 1
-    name: str = Field(min_length=1)
-    postgres_image: str = "postgres:17"
-    schema_path: Path
-    fixtures_path: Path | None = None
+    name: str = Field(min_length=1, max_length=200, pattern=r"\S")
+    postgres_image: str = Field(default="postgres:17", pattern=POSTGRES_IMAGE_PATTERN)
+    schema_path: RelativePath
+    fixtures_path: RelativePath | None = None
     contracts: ContractPaths
-    migrations: list[MigrationStep] = Field(min_length=1)
-    seed: int = Field(default=42, ge=0, strict=True)
+    migrations: list[MigrationStep] = Field(min_length=1, max_length=100)
+    seed: int = Field(default=42, ge=0, le=2**32 - 1, strict=True)
     timeouts: Timeouts = Field(default_factory=Timeouts)
 
     @model_validator(mode="after")
@@ -54,9 +133,9 @@ class RunSpec(StrictModel):
         return self
 
 
-class SemanticAssertions(StrictModel):
+class SemanticAssertions(InputModel):
     columns: list[str] | None = None
-    rows: list[list[Any]] | None = None
+    rows: list[list[Scalar]] | None = Field(default=None, max_length=10_000)
     row_count: int | None = Field(default=None, ge=0, strict=True)
 
     @model_validator(mode="after")
@@ -71,24 +150,35 @@ class SemanticAssertions(StrictModel):
         return self
 
 
-class OperationSpec(StrictModel):
-    id: str = Field(min_length=1, pattern=r"^[a-zA-Z0-9_-]+$")
+class OperationSpec(InputModel):
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
     sql: str = Field(min_length=1)
-    parameters: list[Any] = Field(default_factory=list)
+    parameters: list[Scalar] | dict[str, Scalar] = Field(default_factory=list)
     required: bool = True
     expect: SemanticAssertions
 
 
-class ContractSpec(StrictModel):
+class ContractSpec(InputModel):
     schema_version: Literal[1] = 1
-    version: str = Field(min_length=1)
-    operations: list[OperationSpec] = Field(min_length=1)
+    version: str = Field(min_length=1, max_length=200, pattern=r"\S")
+    operations: list[OperationSpec] = Field(min_length=1, max_length=1000)
 
     @model_validator(mode="after")
     def unique_operation_ids(self) -> Self:
         ids = [operation.id for operation in self.operations]
         if len(ids) != len(set(ids)):
             raise ValueError("Operation IDs must be unique within a contract")
+        return self
+
+
+class FixtureSpec(InputModel):
+    schema_version: Literal[1] = 1
+    tables: dict[str, list[dict[str, Scalar]]]
+
+    @model_validator(mode="after")
+    def bounded_rows(self) -> Self:
+        if sum(len(rows) for rows in self.tables.values()) > 10_000:
+            raise ValueError("At most 10000 explicit fixture rows are supported")
         return self
 
 

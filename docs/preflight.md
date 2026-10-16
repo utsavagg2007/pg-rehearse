@@ -12,8 +12,9 @@ The output lists migration families, file/line/column locations, and input snaps
 counts. Success means the inputs fit the documented envelope. It does not prove
 that migrations execute, CHECK predicates accept existing data, contract results
 are correct, or applications remain compatible. Those require subsequent worker,
-fixture, execution, and analysis features. `run` still returns 4 for a valid
-configuration until the full pipeline is implemented.
+execution and analysis. `run` verifies the baseline and applies migrations on
+independent deployed/candidate clones before reporting compatibility. Setup,
+baseline or infrastructure failure returns 3. See [rehearsal.md](rehearsal.md).
 
 ## Allocation boundary
 
@@ -21,11 +22,12 @@ configuration until the full pipeline is implemented.
 catalog, validates fixture rows, parses every contract operation, and classifies
 every migration step. `validated_environment(path)` calls it before constructing
 `DockerRuntime`, connecting to Docker, writing a run manifest, or allocating any
-resources. Standalone `sandbox` accepts no rehearsal SQL and remains an independent
+resources. `check_isolated_worker`, used by `run`, applies the same gate.
+Standalone `sandbox` accepts no rehearsal SQL and remains an independent
 infrastructure diagnostic.
 
 The accepted SQL strings and input files are retained in snapshots with SHA-256
-hashes. The future worker must consume these accepted snapshots rather than reopen
+hashes. The worker consumes these accepted snapshots rather than reopening
 paths after validation. PostgreSQL AST parsing preserves original migration SQL
 and statement spans; it does not split on semicolons or rewrite executable SQL.
 
@@ -44,7 +46,8 @@ and statement spans; it does not split on semicolons or rewrite executable SQL.
 - Reads use directory descriptors and no-follow opens after resolution, preventing
   a symlink substitution from escaping the root. Special files are rejected using
   file metadata; opening a FIFO does not block. Each input is at most 1 MiB and
-  must contain valid UTF-8 without NUL characters.
+  must contain valid UTF-8 without NUL characters. Combined inputs are capped at
+  8 MiB before allocation for the bounded worker request.
 - At most 100 migration steps, 1000 operations per contract, and 10000 explicit
   fixture rows are accepted. Expression traversal has a 100000-node budget.
 
@@ -59,16 +62,17 @@ substring matching. See the [pglast parser API](https://pglast.readthedocs.io/en
 | Direct column rename | `ALTER TABLE ... RENAME COLUMN`; known baseline table, existing source, new destination |
 | Index creation | Named, non-unique B-tree index over existing plain columns; optional ASC/DESC and NULL ordering |
 | Concurrent index creation | Same index subset, declared as one autocommit statement |
+| Index removal | One index explicitly created earlier; optional public qualification; ordinary or single-statement concurrent autocommit; RESTRICT only |
 | Named CHECK addition | `ADD CONSTRAINT ... CHECK (...)`, optionally `NOT VALID` |
 | CHECK validation/removal/replacement | The CHECK must be explicitly named in the baseline or an earlier accepted step; no CASCADE or IF EXISTS |
 
 Ordered migration declarations update an in-memory projection so a subsequent
 index can reference a renamed column, and CHECK validation can reference an earlier
 addition. This projection is support checking, not a replacement for PostgreSQL's
-catalog analysis or the future executor's catalog snapshots.
+catalog analysis or later catalog observations.
 
 Transaction steps may contain multiple supported statements. Autocommit steps
-must contain exactly one. Concurrent index creation is rejected in transaction
+must contain exactly one. Concurrent index creation/removal is rejected in transaction
 mode, matching [PostgreSQL 17's transaction restriction](https://www.postgresql.org/docs/17/sql-createindex.html).
 Explicit `BEGIN`, `COMMIT`, savepoints, session identity changes, COPY, DO, function
 or extension creation, arbitrary DDL, and unknown AST shapes are rejected.
@@ -84,8 +88,10 @@ counterexample. The active control now creates an ordinary B-tree index.
 Baseline setup accepts plain persistent `CREATE TABLE` declarations in `public`.
 It supports inline/table primary and unique keys, simple immediate fixture foreign
 keys, CHECKs, NULL/NOT NULL, and scalar-literal defaults. Table inheritance,
-partitioning, ON COMMIT behavior, generated/identity/serial columns, executable defaults, and arbitrary
-setup scripts are not accepted by this initial loader.
+partitioning, ON COMMIT behavior, generated columns, SERIAL, executable defaults
+and arbitrary setup scripts remain unsupported. Integer BY DEFAULT identity with
+default sequence options is supported; fixtures must provide explicit IDs. Cyclic
+table/self-row dependencies are rejected before allocation. See [baseline.md](baseline.md).
 
 Supported column types: smallint/integer/bigint, text, varchar (optionally a positive
 length), boolean, unbounded numeric, double precision, UUID, date, timestamp, and
@@ -116,24 +122,31 @@ are additionally accepted in queries. CHECK expressions cannot use aggregates.
 CTEs, SELECT INTO, explicit locking clauses, window functions, arbitrary functions
 and operators, system relations, utility commands, and unknown AST nodes/options
 are rejected. Expected columns/rows/counts are validated structurally; their actual
-database results remain unevaluated until the runner exists.
+database results are evaluated by the worker runner.
 
 `parameters` accepts a positional scalar list for `%s` or a scalar mapping for
 `%(name)s`. The parser uses temporary `$n` representations only for validation;
 original operation SQL and parameters remain unchanged. Missing/unused parameters,
 mixed styles, native `$n`, and binding markers inside literals, quoted identifiers,
 or comments are rejected. With nonempty bindings, literal percent signs must use
-`%%`, following Psycopg formatting. With empty bindings the future worker must
-execute using `parameters=None`, preserving literal percent signs as written.
+`%%`, following Psycopg formatting. With empty bindings the worker executes using `parameters=None`, preserving literal percent signs as written.
 
 ## Exit codes and evidence
 
 - Invalid YAML, paths, types, syntax, fixtures, or transaction declarations: **2**.
 - Parseable SQL outside the supported envelope: **4 (inconclusive)**.
 - Supported preflight: **0** for `validate`, with no compatibility verdict.
-- Valid input passed to the unfinished full `run` pipeline: **4**.
+- Complete passing rehearsal and cleanup: **0**; confirmed incompatibility: **1**.
+- Missing evidence or execution deadlines: **4**.
+- Runtime/worker failure: **3**.
 
 Unit tests assert that invalid SQL, YAML, paths, and fixtures never reach the
 allocator and create no state directory. Real integration tests exercise the
 accepted rename, ordinary/concurrent index, and CHECK shapes against PostgreSQL
 17 after the validation gate, retaining the existing runtime teardown tests.
+
+
+Optional rollout operations and fixed reference application declarations are also
+preflighted before allocation. See [rollout.md](rollout.md) for the bounded phase
+order, actor/write/read requirements, reserved app IDs and HTTP deadline.
+Migration catalog observations are required before a run can pass.

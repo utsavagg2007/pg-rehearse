@@ -1,4 +1,4 @@
-"""Disposable runtime milestone; the migration rehearsal pipeline remains pending."""
+"""Validated migration rehearsal coordination and guaranteed runtime teardown."""
 
 import signal
 import time
@@ -7,10 +7,105 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import FrameType
 
+from pg_rehearse.analysis.compatibility import analyze
 from pg_rehearse.config import LoadedConfig, load_config
-from pg_rehearse.errors import RunInterrupted
+from pg_rehearse.errors import RunInterrupted, RuntimeLifecycleError
+from pg_rehearse.models import Completion, Finding, RunResult, Severity, Verdict
+from pg_rehearse.report.json_report import write_json
+from pg_rehearse.report.markdown import write_markdown
 from pg_rehearse.runtime.docker import DockerRuntime, RunEnvironment, RuntimeOptions
 from pg_rehearse.runtime.manifest import ManifestStore, RunManifest
+from pg_rehearse.worker_protocol import InputFile, RehearsalEvidence, WorkerEvidence, WorkerInputs
+
+
+def worker_inputs(loaded: LoadedConfig) -> WorkerInputs:
+    """Copy accepted bytes, never reread the supplied paths after validation."""
+    paths = [Path(loaded.config_path.name), loaded.spec.schema_path]
+    if loaded.spec.fixtures_path:
+        paths.append(loaded.spec.fixtures_path)
+    paths.append(loaded.spec.contracts.deployed)
+    if loaded.spec.contracts.candidate:
+        paths.append(loaded.spec.contracts.candidate)
+    paths.extend(step.path for step in loaded.spec.migrations)
+    return WorkerInputs(
+        files=[
+            InputFile(
+                name=path.as_posix(),
+                text=snapshot.text,
+                sha256=snapshot.sha256,
+            )
+            for path, snapshot in zip(paths, loaded.input_snapshots, strict=True)
+        ]
+    )
+
+
+def check_isolated_worker(
+    config_path: Path, *, state_dir: Path = Path(".pg-rehearse/runs")
+) -> tuple[RunManifest, WorkerEvidence]:
+    loaded = load_config(config_path)
+    inputs = worker_inputs(loaded)
+    runtime = DockerRuntime(
+        state_dir=state_dir,
+        options=RuntimeOptions(
+            image=loaded.spec.postgres_image, startup_seconds=loaded.spec.timeouts.startup_seconds
+        ),
+    )
+    with runtime.provision() as environment:
+        evidence = runtime.execute_worker(environment, inputs, loaded.spec.timeouts)
+    return ManifestStore(environment.manifest_path).load(), evidence
+
+
+def run_rehearsal(
+    config_path: Path, *, state_dir: Path = Path(".pg-rehearse/runs")
+) -> tuple[RunResult, Path]:
+    loaded = load_config(config_path)
+    inputs = worker_inputs(loaded)
+    evidence = RehearsalEvidence()
+    runtime = DockerRuntime(
+        state_dir=state_dir,
+        options=RuntimeOptions(
+            image=loaded.spec.postgres_image,
+            startup_seconds=loaded.spec.timeouts.startup_seconds,
+        ),
+    )
+    failure: BaseException | None = None
+    try:
+        with runtime.provision() as environment:
+            runtime.rehearse(environment, inputs, loaded.spec.timeouts, evidence)
+    except (RuntimeLifecycleError, RunInterrupted) as exc:
+        failure = exc
+    if runtime.manifest_path is None:
+        if failure:
+            raise failure
+        raise RuntimeLifecycleError("Run manifest was not created")
+    store = ManifestStore(runtime.manifest_path)
+    manifest = store.load()
+    result = analyze(loaded, inputs, evidence, manifest, infrastructure_error=failure is not None)
+    try:
+        write_json(store.path.parent / "report.json", result)
+        write_markdown(store.path.parent / "report.md", result)
+    except OSError:
+        result.completion = Completion.INFRASTRUCTURE_ERROR
+        if result.verdict != Verdict.FAIL:
+            result.verdict = Verdict.INCONCLUSIVE
+        result.findings.append(
+            Finding(
+                rule_id="REPORT_WRITE_FAILED",
+                severity=Severity.ERROR,
+                explanation="A final report could not be saved.",
+            )
+        )
+        try:
+            write_json(store.path.parent / "report.json", result)
+        except OSError:
+            pass  # The manifest and worker receipts remain when report storage is unavailable.
+        raise RuntimeLifecycleError(
+            f"Cannot save final reports; manifest retained at {store.path}"
+        ) from None
+    if isinstance(failure, RunInterrupted):
+        failure.add_note(f"Partial reports: {store.path.parent}")
+        raise failure
+    return result, store.path.parent
 
 
 @contextmanager

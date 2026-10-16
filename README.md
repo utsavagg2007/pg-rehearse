@@ -3,12 +3,13 @@
 A Python CLI for rehearsing PostgreSQL migrations against old and new application
 queries in disposable databases.
 
-**Current stage: disposable runtime and strict SQL preflight implemented.** The CLI can provision
-an owned PostgreSQL 17 container on a private network, confirm readiness, and remove
-its resources. Durable manifests support recovery after interruption or a crash.
-Validation checks typed inputs, contained paths, fixture rows, contract SQL,
-supported migration AST shapes, and transaction declarations before allocation.
-`run` deliberately exits with code **4 (inconclusive)** until the pipeline exists.
+**Current stage: Steps 1–11 implemented.** Strict input preflight gates an owned
+PostgreSQL 17 runtime and scoped workers. Each run seeds and seals a verified
+template, then uses fresh baseline, deployed and candidate branches. Migrations
+commit according to their declared transaction modes before contract probes.
+Evidence-backed terminal, JSON and Markdown reports include final cleanup status.
+The rename example exits **1** with deployed SQLSTATE **42703** and candidate data
+preserved; the additive control exits **0**. Missing evidence cannot pass.
 
 This project was recreated from the requirements visible in the
 [shared conversation](https://chatgpt.com/share/6acf9947-f660-83ee-bcea-032862955887).
@@ -92,18 +93,50 @@ uv build
 
 Use `.venv/bin/python` as the interpreter in your editor.
 
-## Next complete migration milestone
+## Isolated worker milestone
 
-1. Provision an owned, disposable PostgreSQL 17 instance (**implemented**).
-2. Load the orders schema and deterministic fixtures.
-3. Verify the deployed application's queries and semantic assertions.
-4. Commit the `users.name` → `users.full_name` rename.
-5. Demonstrate that an unchanged old query fails with SQLSTATE `42703`.
-6. Write evidence-backed reports and clean up all resources for the run.
+Build the worker image from this checkout before running it:
 
-The rename example is intentionally incompatible. The additive control example
-will provide a passing comparison once the execution pipeline is implemented.
-Neither result is simulated by this scaffold.
+```sh
+make worker-image
+pg-rehearse run --config examples/orders/rehearsal.yml
+```
+
+The worker receives accepted input snapshots and scoped credentials through stdin.
+It runs without host mounts or a Docker socket and enforces execution deadlines.
+Validated role evidence and final cleanup are saved separately. Rebuild the image
+after source changes. See [docs/worker.md](docs/worker.md) for permissions and limits.
+Schema/fixture loading and contract semantics are documented in
+[docs/baseline.md](docs/baseline.md). The complete flow, transaction boundaries,
+clone identity, reports and limitations are in [docs/rehearsal.md](docs/rehearsal.md).
+
+## Complete migration rehearsal
+
+```sh
+pg-rehearse run --config examples/orders/rehearsal.yml  # expected exit 1
+pg-rehearse run --config examples/orders/control.yml    # expected exit 0
+```
+
+Reports and private worker receipts are saved under `.pg-rehearse/runs/<run-id>/`.
+The rename commits, the unchanged deployed query fails, and the candidate sees the
+preserved value. The control creates a valid ordinary index and preserves deployed
+queries. Cleanup removes the owned template, clones, workers, container and network.
+Optional rollout declarations now exercise persistent/fresh old sessions, committed
+mixed-version writes, candidate-only reads and an independent application rollback
+branch. The maintained orders adapter runs real old/new HTTP services and reports
+application/domain failures separately. Migration receipts verify index/CHECK
+catalog facts, including failed concurrent build remnants. See
+[docs/rollout.md](docs/rollout.md) for the exact supported scope.
+
+```sh
+pg-rehearse run --config examples/orders/rollout.yml                 # expected 0
+pg-rehearse run --config examples/orders/applications.yml            # expected 0
+pg-rehearse run --config examples/orders/applications-status-failure.yml  # expected 1
+pg-rehearse run --config examples/orders/check-tightening.yml        # expected 1
+pg-rehearse run --config examples/orders/index-drop.yml              # expected 0
+```
+
+The next milestone is controlled contention and lock observation (feature 12).
 
 ## Project references
 
@@ -118,14 +151,13 @@ Neither result is simulated by this scaffold.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Command successful; future runs require complete passing evidence and cleanup |
+| 0 | Command successful; runs have complete passing evidence and cleanup |
 | 1 | Confirmed compatibility failure |
 | 2 | Invalid configuration or CLI input |
 | 3 | Environment/infrastructure failure |
-| 4 | Inconclusive or feature not implemented |
+| 4 | Inconclusive evidence or unsupported input |
 
 `validate` now performs PostgreSQL 17 SQL preflight and typed fixture validation.
 Unsupported statements return 4; malformed inputs return 2. Source snapshots and
-hashes preserve accepted input. Database compatibility still requires the future
-execution pipeline. See [docs/preflight.md](docs/preflight.md) for the exact support
+hashes preserve accepted input. `run` exercises those snapshots against real PostgreSQL. See [docs/preflight.md](docs/preflight.md) for the exact support
 matrix, input limits, parameter rules, and allocation boundary.

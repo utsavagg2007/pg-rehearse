@@ -4,6 +4,7 @@ import copy
 import hashlib
 import os
 import stat
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Any
@@ -14,7 +15,7 @@ from yaml.events import AliasEvent
 from yaml.nodes import MappingNode, Node
 
 from pg_rehearse.errors import ConfigurationError
-from pg_rehearse.fixtures.validate import validate_fixtures
+from pg_rehearse.fixtures.validate import column_value, validate_fixtures
 from pg_rehearse.migration.classify import (
     MigrationClassification,
     baseline_catalog,
@@ -28,6 +29,7 @@ from pg_rehearse.migration.preflight import (
     parse_document,
 )
 from pg_rehearse.models import ContractSpec, FixtureSpec, RunSpec
+from pg_rehearse.worker_protocol import MAX_INPUT_TOTAL, WorkerInputs
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -183,16 +185,45 @@ def load_config(path: Path) -> LoadedConfig:
     except (OSError, RuntimeError) as exc:
         raise ConfigurationError(f"Cannot resolve configuration: {path}") from exc
     config_snapshot = read_snapshot(path)
+    return preflight_config(
+        config_snapshot,
+        lambda declared: read_snapshot(resolve_input(path.parent, declared), root=path.parent),
+    )
+
+
+def load_worker_config(inputs: WorkerInputs) -> LoadedConfig:
+    """Apply the same preflight to copied bytes; this function never opens a path."""
+    files = iter(inputs.files)
+    first = next(files)
+    root = Path("/inputs")
+
+    def snapshot(name: Path) -> InputSnapshot:
+        file = next(files, None)
+        if file is None or file.name != name.as_posix():
+            raise ConfigurationError("Missing or misordered worker input snapshot")
+        return InputSnapshot(root / name, file.text, file.sha256)
+
+    loaded = preflight_config(InputSnapshot(root / first.name, first.text, first.sha256), snapshot)
+    if next(files, None) is not None:
+        raise ConfigurationError("Unexpected worker input snapshots")
+    return loaded
+
+
+def preflight_config(
+    config_snapshot: InputSnapshot, read_input: Callable[[Path], InputSnapshot]
+) -> LoadedConfig:
+    path = config_snapshot.path
     try:
         spec = RunSpec.model_validate(parse_yaml(config_snapshot.text, path))
     except ValidationError as exc:
         raise ConfigurationError(validation_message(path, exc)) from exc
-    root = path.parent
     snapshots = [config_snapshot]
 
     def read(declared: Path) -> InputSnapshot:
-        snapshot = read_snapshot(resolve_input(root, declared), root=root)
+        snapshot = read_input(declared)
         snapshots.append(snapshot)
+        if sum(len(item.text.encode()) for item in snapshots) > MAX_INPUT_TOTAL:
+            raise ConfigurationError("Accepted inputs exceed 8 MiB total")
         return snapshot
 
     schema = read(spec.schema_path)
@@ -205,7 +236,9 @@ def load_config(path: Path) -> LoadedConfig:
         )
     except ValidationError as exc:
         raise ConfigurationError(validation_message("fixtures", exc)) from exc
-    validate_fixtures(fixture_spec, catalog, str(fixture.path) if fixture else "fixtures")
+    normalized_fixtures = validate_fixtures(
+        fixture_spec, catalog, str(fixture.path) if fixture else "fixtures"
+    )
 
     def contract(declared: Path) -> ContractSpec:
         snapshot = read(declared)
@@ -223,6 +256,43 @@ def load_config(path: Path) -> LoadedConfig:
     candidate = contract(spec.contracts.candidate) if spec.contracts.candidate else None
     if candidate and candidate.version == deployed.version:
         raise ConfigurationError("Deployed and candidate contract versions must differ")
+    if spec.applications:
+        required_columns = {
+            "users": {"id", "name"},
+            "orders": {"id", "user_id", "status", "amount_cents"},
+        }
+        for table, names in required_columns.items():
+            if table not in catalog.tables or not names <= set(catalog.tables[table].columns):
+                raise ConfigurationError(
+                    "Orders application adapter requires its reference table columns"
+                )
+        reserved_ids = {spec.applications.order_id_base + offset for offset in (1, 2, 3)}
+        if any(row["id"] in reserved_ids for row in normalized_fixtures["orders"]):
+            raise ConfigurationError("Application probe order IDs collide with fixture rows")
+        for value in reserved_ids:
+            column_value(catalog.tables["orders"].columns["id"], value, "application order ID")
+    if spec.rollout:
+        for phase in spec.rollout.phases:
+            kinds = []
+            for operation in phase.operations:
+                source = f"{path} (rollout {phase.id}/{operation.id})"
+                query = bound_sql_for_parse(operation.sql, operation.parameters, source)
+                parsed = parse_document(query, source)
+                validate_contract(parsed)
+                kinds.append((operation.actor, parsed.statements[0].kind == "SelectStmt"))
+            expected = {
+                "mixed_versions": [
+                    ("deployed", False),
+                    ("candidate", True),
+                    ("candidate", False),
+                    ("deployed", True),
+                ],
+                "app_rollback": [("candidate", False), ("deployed", True)],
+            }
+            if phase.id in expected and kinds != expected[phase.id]:
+                raise ConfigurationError(f"{phase.id}: declare the ordered write/read actor pairs")
+            if phase.id == "candidate_only" and any(actor != "candidate" for actor, _ in kinds):
+                raise ConfigurationError("candidate_only operations must use the candidate actor")
     documents = []
     classifications: list[MigrationClassification] = []
     projected = copy.deepcopy(catalog)

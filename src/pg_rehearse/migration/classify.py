@@ -62,6 +62,7 @@ EXPRESSION_NODES = {
     "MinMaxExpr",
 }
 QUERY_NODES = EXPRESSION_NODES | {
+    "List",
     "SelectStmt",
     "InsertStmt",
     "UpdateStmt",
@@ -157,12 +158,17 @@ def validate_expression(value: object, statement: SQLStatement, *, query: bool =
                 "rarg",
                 "valuesLists",
             },
-            "InsertStmt": {"relation", "cols", "selectStmt", "returningList"},
+            "InsertStmt": {"relation", "cols", "selectStmt", "returningList", "override"},
             "UpdateStmt": {"relation", "targetList", "whereClause", "fromClause", "returningList"},
             "DeleteStmt": {"relation", "usingClause", "whereClause", "returningList"},
         }
         if kind in query_fields:
             only_fields(node, query_fields[kind], statement)
+        if (
+            kind == "InsertStmt"
+            and node.get("override", "OVERRIDING_NOT_SET") != "OVERRIDING_NOT_SET"
+        ):
+            statement.reject("INSERT identity override modes are not supported")
         if kind == "RangeVar":
             relation(node, statement)
         elif kind == "TypeName":
@@ -191,6 +197,7 @@ class ColumnDefinition:
     has_default: bool = False
     default: Scalar = None
     max_length: int | None = None
+    identity: bool = False
 
 
 @dataclass(frozen=True)
@@ -253,6 +260,7 @@ def _constraint(
             "fk_upd_action",
             "fk_del_action",
             "initially_valid",
+            "generated_when",
         },
         statement,
     )
@@ -266,6 +274,18 @@ def _constraint(
             )
         else:
             table.columns[column] = replace(definition, nullable=kind == "CONSTR_NULL")
+    elif kind == "CONSTR_IDENTITY" and column:
+        definition = table.columns[column]
+        if (
+            constraint.get("generated_when") != "d"
+            or definition.data_type not in {"int2", "int4", "int8"}
+            or definition.has_default
+            or definition.identity
+        ):
+            statement.reject(
+                "Only integer BY DEFAULT identity with default sequence options is supported"
+            )
+        table.columns[column] = replace(definition, nullable=False, identity=True)
     elif kind in ("CONSTR_PRIMARY", "CONSTR_UNIQUE"):
         if not keys or any(key not in table.columns for key in keys):
             statement.reject("Constraint references unknown columns", unsupported=False)
@@ -377,6 +397,26 @@ def classify_migration(
     findings = []
     for statement in document.statements:
         node = statement.node
+        if statement.kind == "DropStmt":
+            only_fields(node, {"objects", "removeType", "behavior", "concurrent"}, statement)
+            if (
+                node.get("removeType") != "OBJECT_INDEX"
+                or node.get("behavior") != "DROP_RESTRICT"
+                or len(node["objects"]) != 1
+            ):
+                statement.reject("Only one explicitly created index can be dropped with RESTRICT")
+            names = strings(node["objects"][0]["List"]["items"])
+            if len(names) not in (1, 2) or (len(names) == 2 and names[0] != "public"):
+                statement.reject("Only indexes in public are supported")
+            index = identifier(names[-1], statement)
+            if index not in catalog.indexes:
+                statement.reject("DROP INDEX must reference an index created by an earlier step")
+            concurrent = node.get("concurrent", False)
+            if concurrent and mode != TransactionMode.AUTOCOMMIT:
+                statement.reject("DROP INDEX CONCURRENTLY requires autocommit", unsupported=False)
+            catalog.indexes.remove(index)
+            findings.append(MigrationClassification("drop_index", statement, concurrent))
+            continue
         if statement.kind not in {"RenameStmt", "IndexStmt", "AlterTableStmt"}:
             statement.reject(f"Unsupported migration statement {statement.kind}")
         if not isinstance(node.get("relation"), dict):

@@ -12,10 +12,12 @@ The CLI checks its environment, loads configuration/contracts, and runs a dispos
 PostgreSQL lifecycle using `sandbox`. The runtime records allocation intents before
 creating resources, saves returned IDs atomically, verifies TCP readiness, and
 cleans up using matched ownership labels. `recover` can finish an inactive run.
-The full migration, workload, role-isolated worker, analysis, and reporting pipeline
-remains pending. Preflight now parses PostgreSQL 17 SQL, checks the documented
-supported subset, validates typed fixtures, and snapshots original inputs. The
-`validated_environment` boundary finishes this work before constructing a runtime.
+`run` uses scoped workers to seed a verified template and execute fresh baseline,
+deployed and candidate branches. It commits migrations before application probes,
+then derives compatibility findings and coverage from recorded evidence. Final
+terminal/JSON/Markdown reports follow cleanup. Preflight and copied snapshots gate
+allocation and are rechecked inside workers. See [worker.md](worker.md),
+[baseline.md](baseline.md) and [rehearsal.md](rehearsal.md).
 
 ## Target run lifecycle
 
@@ -24,11 +26,11 @@ CLI -> validate inputs -> host coordinator -> owned Docker runtime
                                             |
                                   isolated database worker
                                             |
-                  seed -> baseline probes -> migration -> rollout probes
+                  seed -> seal -> clone baseline/deployed/candidate -> probes
                                             |
-                         recorded evidence -> analysis -> reports
+                         recorded evidence -> cleanup -> analysis -> reports
                                             |
-                       coordinator cleanup -> final cleanup status
+                       final completion / verdict / coverage / cleanup
 ```
 
 The coordinator alone has access to the Docker socket. Each run has a unique ID,
@@ -44,7 +46,10 @@ Run baseline checks before applying a migration. A broken baseline is a setup
 failure, not proof of migration incompatibility. Commit migration steps according
 to their declared transaction mode. Reset failed transactions before continuing.
 
-For independent experiments, clone immutable, verified templates. Rollout
+For independent experiments, clone immutable, verified templates. Steps 9–11 add
+explicit schema-first phases, persistent/fresh sessions, committed mixed writes,
+a separate application rollback branch and maintained HTTP reference probes.
+See [rollout.md](rollout.md) for the implemented input/evidence envelope. Rollout
 experiments deliberately preserve sessions and committed mixed-version writes.
 Rollback experiments run separately. Lock evidence and performance measurements
 are advisory and must distinguish missing observations from passing observations.
@@ -59,9 +64,9 @@ An incomplete experiment may confirm a failure, so `partial` + `fail` is valid.
 A passing result requires all declared checks, complete execution, no blocking
 findings, no failed operations/assertions, and successful cleanup. Checks need
 phase-qualified IDs such as `baseline/deployed-v1/get-user` and
-`post-migration/deployed-v1/get-user`. The future analysis layer must verify that
-coverage IDs refer to actual evidence; the foundation models cannot authenticate
-caller-supplied evidence.
+`post_deployed/deployed-v1/get-user`. The implemented analysis validates receipts
+and derives coverage from actual observations; caller-supplied completion flags
+cannot substitute for missing evidence.
 
 Render terminal, JSON, Markdown, and eventually escaped HTML from the same result.
 Persist reports after cleanup so cleanup status is accurate. Never include secrets

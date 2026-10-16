@@ -1,0 +1,15 @@
+schema_version: 1
+name: orders-concurrent-index-drop
+postgres_image: postgres:17
+schema_path: schema/base.sql
+fixtures_path: fixtures/orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-v1.yml
+migrations:
+- id: add-order-user-index
+  path: migrations/create_order_user_index.sql
+  transaction: transaction
+- id: drop-order-user-index
+  path: migrations/drop_order_user_index.sql
+  transaction: autocommit

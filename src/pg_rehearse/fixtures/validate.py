@@ -3,10 +3,11 @@
 import math
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from graphlib import CycleError, TopologicalSorter
 from typing import Any
 from uuid import UUID
 
-from pg_rehearse.errors import ConfigurationError
+from pg_rehearse.errors import ConfigurationError, UnsupportedInputError
 from pg_rehearse.migration.classify import ColumnDefinition, SchemaCatalog
 from pg_rehearse.models import FixtureSpec, Scalar
 
@@ -37,6 +38,7 @@ def column_value(column: ColumnDefinition, value: Scalar, context: str) -> Any:
         elif kind == "float8":
             if type(value) not in (float, int) or not math.isfinite(float(value)):
                 raise ValueError
+            return float(value)
         elif kind in {"uuid", "date", "timestamp", "timestamptz"}:
             if not isinstance(value, str):
                 raise ValueError
@@ -55,7 +57,9 @@ def column_value(column: ColumnDefinition, value: Scalar, context: str) -> Any:
     return value
 
 
-def validate_fixtures(fixtures: FixtureSpec | None, catalog: SchemaCatalog, source: str) -> None:
+def validate_fixtures(
+    fixtures: FixtureSpec | None, catalog: SchemaCatalog, source: str
+) -> dict[str, list[dict[str, Any]]]:
     rows_by_table = fixtures.tables if fixtures else {}
     if set(rows_by_table) - set(catalog.tables):
         raise ConfigurationError(f"{source}: fixture references an unknown baseline table")
@@ -93,3 +97,34 @@ def validate_fixtures(fixtures: FixtureSpec | None, catalog: SchemaCatalog, sour
                     raise ConfigurationError(
                         f"{source}: {name} has a fixture foreign key without a parent row"
                     )
+    try:
+        tables = TopologicalSorter(
+            {
+                name: sorted(
+                    {foreign.target for foreign in table.foreign_keys if foreign.target != name}
+                )
+                for name, table in catalog.tables.items()
+            }
+        ).static_order()
+        ordered = {}
+        for name in tables:
+            rows = normalized[name]
+            dependencies: dict[int, set[int]] = {index: set() for index in range(len(rows))}
+            for foreign in catalog.tables[name].foreign_keys:
+                if foreign.target != name:
+                    continue
+                keys = foreign.target_columns or catalog.tables[name].primary_key
+                parents = {tuple(row[key] for key in keys): index for index, row in enumerate(rows)}
+                for index, row in enumerate(rows):
+                    references = tuple(row[key] for key in foreign.columns)
+                    if None not in references and (parent := parents[references]) != index:
+                        dependencies[index].add(parent)
+            indices = TopologicalSorter(
+                {i: sorted(deps) for i, deps in dependencies.items()}
+            ).static_order()
+            ordered[name] = [rows[index] for index in indices]
+        return ordered
+    except CycleError as exc:
+        raise UnsupportedInputError(
+            f"{source}: cyclic table or fixture dependencies are unsupported"
+        ) from exc

@@ -12,12 +12,24 @@ pg-rehearse validate --config examples/orders/rehearsal.yml
 `doctor --skip-docker` only verifies Python and dependencies. Start Docker Desktop
 and run `pg-rehearse doctor` for the daemon check. No containers are provisioned.
 
+Prepare Docker and build the worker before checking isolated execution:
+
 ```sh
+docker pull postgres:17
+make worker-image
 pg-rehearse run --config examples/orders/rehearsal.yml
 ```
 
-This currently returns **4**, explicitly reporting that the migration run
-pipeline has not been implemented. Validation does not prove SQL compatibility.
+The rename example returns **1**: the old query fails with SQLSTATE 42703, while
+candidate queries read preserved data. The additive control returns **0**:
+
+```sh
+pg-rehearse run --config examples/orders/control.yml
+```
+
+The printed run directory contains final `report.json` and `report.md`. Setup,
+baseline or infrastructure failures return **3**; incomplete evidence returns **4**.
+See `docs/rehearsal.md` for transaction, clone, reporting and cleanup behavior.
 
 To install in another checkout, install Python 3.12+ and uv, then run
 `uv sync --locked`. The interpreter selection is recorded in `.python-version`;
@@ -46,7 +58,7 @@ Step 2 is also implemented: `validate` parses PostgreSQL 17 SQL, validates fixtu
 rows and paths, and checks migration support and transaction modes. No Docker
 resources are allocated by validation. See `docs/preflight.md` for accepted inputs.
 
-Next, follow feature 3 in `IMPLEMENTATION_ORDER.md`: isolated workers and scoped
-database roles. Once features 1–7 work, the rename example should produce
-SQLSTATE `42703`, a compatibility failure, and exit code 1; the additive control
-should pass with exit code 0.
+Steps 1–11 are implemented. Workers retain separate setup/migration/workload/observer
+permissions. Templates and fresh branches isolate independent experiments. Optional rollout declarations add persistent sessions, committed mixed writes
+and separate application rollback. Use applications.yml for real HTTP probes and
+see docs/rollout.md for index/CHECK evidence. Feature 12 adds controlled lock observation.

@@ -1,19 +1,39 @@
-# Integration test plan
+# Real PostgreSQL integration tests
 
-Feature 1 has 13 real Docker/PostgreSQL cases in `test_runtime.py` and
-`test_runtime_faults.py`. Prepare the official image with `docker pull postgres:17`,
-start Docker, and run `uv run --locked pytest --run-docker`.
+Prepare Docker and both images:
 
-Step 2 adds four cases in `test_preflight.py`: accepted rename, ordinary index,
-concurrent index, and CHECK shapes are preflighted before provisioning, then
-checked against PostgreSQL 17 with fixed reviewed SQL. There are 17 real cases total.
+```sh
+docker pull postgres:17
+make worker-image
+uv run --locked pytest --run-docker
+```
 
-Coverage includes readiness, PG17 identity, isolation settings, normal teardown,
-SQL error, startup timeout, partial creation, lost create response, bookkeeping
-failure, recovery, ownership mismatch, two concurrent lifetimes, cleanup failure,
-SIGINT/SIGTERM, and SIGKILL. Fault injection surrounds real Docker resources; it
-does not substitute a mocked database for PostgreSQL behavior.
+There are 75 real cases across seven files:
 
-Without the explicit option these cases skip. With it, a missing daemon or image
-fails. Baseline seeding, contract execution, rename SQLSTATE `42703`, and the
-additive control will get their own real tests as features 2–7 are implemented.
+- Step 1: 13 lifecycle/fault cases in `test_runtime.py` and `test_runtime_faults.py`.
+- Step 2: four accepted rename, ordinary/concurrent index and CHECK cases in `test_preflight.py`.
+- Step 3: fourteen isolated-worker cases in `test_worker.py`.
+- Steps 4–5: fourteen baseline/contract cases in `test_baseline.py`.
+- Steps 6–8: thirteen complete rehearsal/clone/report cases in `test_rehearsal.py`.
+- Steps 9–11: seventeen rollout/application/catalog cases in `test_rollout.py`.
+
+Worker cases use the production image and PostgreSQL for actual role grants and
+permission denials, nonroot execution, isolation settings, statement/lock/wall
+budgets, authentication failure and secret exclusion, crashes, missing/malformed
+responses, output limits, allocation intents, ownership refusal and recovery.
+Baseline cases load accepted schema/fixtures, verify repeatable data and identity
+sequences, run bound contract assertions, roll back writes and recover after SQL
+errors, result limits and operation deadlines. Rehearsal cases verify rename/control
+CLI outcomes, committed valid ordinary/concurrent indexes, transactional rollback,
+ordered/autocommit boundaries, isolated writes/sequences, sealed/stale templates,
+worker crashes, lock deadlines, failed report writes and recoverable failed cleanup.
+
+Without `--run-docker`, integration cases explicitly skip. With it, unavailable
+Docker or a missing required image fails. CI builds the locked worker before tests.
+Rebuild the worker image after source or lockfile changes.
+
+New rollout cases exercise persistent/fresh SQL and HTTP sessions, committed writes
+and independent rollback, application domain failures despite passing SQL, strict
+receipt rejection, dependent-read skips, CHECK validation/drop/re-add and invalid
+concurrent index remnants. Actual child process crashes, malformed HTTP responses
+and request deadlines remain distinct from SQL compatibility failures.

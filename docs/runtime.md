@@ -1,7 +1,7 @@
 # Disposable PostgreSQL runtime
 
-Feature 1 is implemented. The host coordinator owns Docker operations; the future
-worker will execute accepted user SQL with scoped roles. The runtime's readiness
+Features 1–11 are implemented. The host coordinator owns Docker operations; the
+isolated workers load fixtures, apply migrations and run scoped contract probes. The runtime's readiness
 probe is `pg_isready` over TCP, not an application compatibility check.
 
 ## Run the milestone
@@ -16,7 +16,9 @@ uv run --locked pg-rehearse sandbox
 `sandbox` creates a unique run, confirms PostgreSQL readiness, and tears down its
 container and network before returning 0. A lifecycle failure returns 3. It does
 not execute the orders examples, seed data, apply migrations, or issue a migration
-verdict. `pg-rehearse run` still returns 4 until the full pipeline exists.
+verdict. `run` performs the complete SQL-contract rehearsal, returning 1 for the
+rename example and 0 for its control. See [worker.md](worker.md) for permissions
+and [rehearsal.md](rehearsal.md) for templates, clones and reports.
 
 Options:
 
@@ -47,8 +49,8 @@ initial fixture budget need a later explicit resource configuration.
 An ephemeral bootstrap password lives only in memory and the owned container's
 environment. It is not exported through `RunEnvironment`, stored in manifests, or
 printed by the CLI. Docker administrators can inspect container environments;
-this runtime is not a hostile-code security boundary. Separate application,
-migration, and observer role grants remain feature 3.
+this runtime is not a hostile-code security boundary. Separate setup, migration,
+workload and observer role grants are implemented in feature 3.
 
 ## Durable manifest and crash windows
 
@@ -83,7 +85,8 @@ explicit and limited to that run. A per-run advisory lock refuses recovery while
 a coordinator is active and is released by the OS after a crash. The runtime lock
 currently supports Linux and macOS.
 
-Remove verified containers first, then the network. Never disconnect foreign
+Remove every verified worker first, then PostgreSQL (including its template and
+clones), then the network. Never disconnect foreign
 network endpoints or delete attached volumes. A blocked network removal is a
 visible cleanup failure; resolve the blocking resource separately and retry the
 same recovery command. Already absent resources count as removed, making recovery
@@ -103,13 +106,13 @@ from pg_rehearse.runtime.docker import DockerRuntime
 
 with DockerRuntime(state_dir=Path(".pg-rehearse/runs")).provision() as environment:
     print(environment.run_id, environment.manifest_path)
-    # Future workers attach to environment.network_id; no host port is required.
+    # runtime.execute_worker uses environment.network_id; no host port is required.
 # Owned resources are removed here, including after a body exception.
 ```
 
 The caller's original exception is preserved if teardown also encounters an error.
 Cleanup details remain in the manifest and exception notes. CLI signal handlers
-are installed only by the sandbox orchestration scope, not by this library API.
+are installed by CLI sandbox/run orchestration, not by this library API.
 
 ## Verification
 
@@ -117,8 +120,8 @@ are installed only by the sandbox orchestration scope, not by this library API.
 uv run --locked pytest --run-docker
 ```
 
-The complete suite currently has 155 unit cases and 17 real Docker/PostgreSQL cases.
-Thirteen cover this lifecycle; four verify the accepted SQL shapes after preflight.
+The suite covers this lifecycle, accepted SQL shapes, isolated workers and
+baseline/contract execution; actual counts and results are in `../PROGRESS.md`.
 Without `--run-docker`, the real tests are explicitly skipped. With the option,
 an unavailable daemon or missing image is a failure rather than a silent skip.
 
@@ -127,7 +130,8 @@ normal teardown, a real SQL error, startup timeout, partial allocation, lost cre
 response, manifest write failure, allocation-intent recovery, ownership mismatch,
 two active runs, an occupied network, SIGINT, SIGTERM, and SIGKILL recovery.
 
-The lifecycle tests use fixed trusted SQL solely to verify PostgreSQL identity and
-teardown after a real SQL failure. They do not implement the user SQL worker.
+The lifecycle tests use fixed trusted SQL to verify PostgreSQL identity and
+teardown after a real SQL failure. Worker tests verify the isolated execution
+boundary, migration transactions, clone isolation and post-cleanup reports.
 The full suite passed locally on Docker Desktop 29.7.2, Linux arm64 PostgreSQL 17.
 GitHub CI is configured, but has not been run in this chat.

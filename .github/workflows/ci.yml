@@ -1,4 +1,4 @@
-name: Preflight and disposable runtime checks
+name: PostgreSQL preflight, runtime and rehearsal checks
 
 on:
   push:
@@ -34,7 +34,9 @@ jobs:
         run: |
           docker pull postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
           docker tag postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3 postgres:17
-      - name: Unit and real PostgreSQL lifecycle tests
+      - name: Build locked isolated worker
+        run: docker build -f docker/worker.Dockerfile -t pg-rehearse-worker:0.1.0 .
+      - name: Unit and real PostgreSQL rehearsal tests
         run: uv run --locked pytest --run-docker --junitxml=.pg-rehearse/test-results.xml
       - name: CLI checks
         run: |

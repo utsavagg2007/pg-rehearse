@@ -1,4 +1,4 @@
-.PHONY: setup check test integration lint format typecheck build doctor
+.PHONY: setup check test integration lint format typecheck build doctor worker-image
 
 setup:
 	uv sync --locked
@@ -10,6 +10,9 @@ test:
 
 integration:
 	uv run --locked pytest --run-docker
+
+worker-image:
+	docker build -f docker/worker.Dockerfile -t pg-rehearse-worker:0.1.0 .
 
 lint:
 	uv run --locked ruff check .

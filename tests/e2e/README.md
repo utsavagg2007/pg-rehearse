@@ -1,6 +1,8 @@
-# End-to-end test plan
+# End-to-end checks
 
-After the real pipeline exists, exercise the installed CLI, its exit codes,
-coverage, report artifacts, and cleanup. The rename example must return 1 and the
-control 0. Invalid input returns 2 before allocation. Infrastructure failure
-returns 3. Missing evidence returns 4. Currently only foundation CLI unit tests run.
+Installed CLI rename/control rehearsals run against real PostgreSQL in
+`tests/integration/test_rehearsal.py`. They check exits 1/0, candidate data,
+SQLSTATE 42703, required coverage, final JSON/Markdown reports and cleanup.
+Other tests cover invalid input before allocation (2), infrastructure/report/
+cleanup failures (3), missing evidence and lock deadlines (4). Real tests require
+`--run-docker` and a rebuilt worker image. Rollout and real HTTP application cases run in tests/integration/test_rollout.py.

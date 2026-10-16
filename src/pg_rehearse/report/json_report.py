@@ -1,5 +1,28 @@
-"""Planned feature 7; foundation-stage placeholder.
+"""Private, atomic report files from the final RunResult."""
 
-Write versioned machine-readable results including the final cleanup status.
-No database behavior is implemented in this module yet.
-"""
+import os
+import tempfile
+from pathlib import Path
+
+from pg_rehearse.models import RunResult
+
+
+def atomic_text(path: Path, content: str) -> None:
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, prefix=".report-", delete=False
+        ) as stream:
+            temporary = stream.name
+            os.chmod(temporary, 0o600)
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary:
+            Path(temporary).unlink(missing_ok=True)
+
+
+def write_json(path: Path, result: RunResult) -> None:
+    atomic_text(path, result.model_dump_json(indent=2) + "\n")

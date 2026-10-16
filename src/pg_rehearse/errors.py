@@ -43,6 +43,14 @@ class CleanupError(RuntimeLifecycleError):
     """Owned resources or cleanup bookkeeping remain unresolved."""
 
 
+class WorkerError(RuntimeLifecycleError):
+    """The worker failed or returned incomplete/unusable evidence."""
+
+
+class WorkerDeadline(WorkerError):
+    """The worker exceeded its execution budget."""
+
+
 class RunInterrupted(KeyboardInterrupt):
     """A CLI signal requested bounded teardown."""
 

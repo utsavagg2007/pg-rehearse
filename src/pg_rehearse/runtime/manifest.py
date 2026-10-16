@@ -18,11 +18,17 @@ MANAGED_LABEL = "io.pg-rehearse.managed"
 RUN_LABEL = "io.pg-rehearse.run-id"
 OWNER_LABEL = "io.pg-rehearse.owner"
 KIND_LABEL = "io.pg-rehearse.kind"
-ResourceKind = Literal["container", "network"]
+ResourceKind = Literal["container", "worker", "network"]
 
 
-def resource_name(run_id: str, kind: ResourceKind) -> str:
-    return f"pgr-{run_id}-{'postgres' if kind == 'container' else 'network'}"
+WorkerSlot = Literal[
+    "seed", "baseline_probe", "post_deployed", "post_candidate", "rollout", "rollback"
+]
+
+
+def resource_name(run_id: str, kind: ResourceKind, slot: WorkerSlot | None = None) -> str:
+    suffix = f"-{slot}" if slot else ""
+    return f"pgr-{run_id}-{'postgres' if kind == 'container' else kind}{suffix}"
 
 
 class ResourceRecord(StrictModel):
@@ -30,6 +36,7 @@ class ResourceRecord(StrictModel):
     name: str
     resource_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     removed: bool = False
+    slot: WorkerSlot | None = None
 
 
 class RunManifest(StrictModel):
@@ -41,6 +48,7 @@ class RunManifest(StrictModel):
     image_requested: str
     image_id: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     image_digest: str | None = None
+    worker_image_id: str | None = Field(default=None, pattern=r"^sha256:[a-f0-9]{64}$")
     architecture: str | None = None
     operating_system: str | None = None
     state: Literal["provisioning", "ready", "cleaning", "cleaned", "cleanup_failed"] = (
@@ -61,11 +69,13 @@ class RunManifest(StrictModel):
 
     @model_validator(mode="after")
     def validate_resources(self) -> Self:
-        kinds = [resource.kind for resource in self.resources]
+        kinds = [(resource.kind, resource.slot) for resource in self.resources]
         if len(kinds) != len(set(kinds)):
-            raise ValueError("Only one resource of each kind is allowed in this milestone")
+            raise ValueError("Only one resource of each kind and worker slot is allowed")
         for resource in self.resources:
-            if resource.name != resource_name(self.run_id, resource.kind):
+            if resource.slot is not None and resource.kind != "worker":
+                raise ValueError("Only workers have experiment slots")
+            if resource.name != resource_name(self.run_id, resource.kind, resource.slot):
                 raise ValueError("Resource name does not match its run and kind")
         return self
 

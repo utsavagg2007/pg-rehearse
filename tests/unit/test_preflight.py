@@ -191,3 +191,24 @@ def test_snapshots_do_not_change_when_files_are_edited_later(rehearsal_project: 
     loaded.migration_paths[0].write_text("DROP TABLE users;")
     assert loaded.migration_sql[0].text == original
     assert loaded.classifications[0].family == "rename_column"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "INSERT INTO users(id,name) VALUES(1,'Ada') RETURNING id,name",
+        "INSERT INTO users(id,name) VALUES(1,'Ada'),(2,'Grace')",
+        "UPDATE users SET name='Grace' WHERE id=1 RETURNING name",
+        "DELETE FROM users WHERE id=1 RETURNING id",
+    ],
+)
+def test_ordinary_dml_is_supported(sql: str) -> None:
+    validate_contract(parse_document(sql, "contract"))
+
+
+@pytest.mark.parametrize("mode", ["SYSTEM", "USER"])
+def test_explicit_identity_override_is_not_silently_accepted(mode: str) -> None:
+    with pytest.raises(UnsupportedInputError):
+        validate_contract(
+            parse_document(f"INSERT INTO users OVERRIDING {mode} VALUE VALUES(1,'Ada')", "contract")
+        )

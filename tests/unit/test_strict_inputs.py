@@ -24,6 +24,8 @@ from pg_rehearse.orchestrator import validated_environment
         {"postgres_image": "evil/image:17"},
         {"timeouts": {"statement_ms": 1, "lock_ms": 10}},
         {"timeouts": {"unknown": 1}},
+        {"timeouts": {"worker_seconds": 0}},
+        {"timeouts": {"worker_seconds": "60"}},
     ],
 )
 def test_strict_manifest_fields(rehearsal_project: Path, update: dict[str, object]) -> None:

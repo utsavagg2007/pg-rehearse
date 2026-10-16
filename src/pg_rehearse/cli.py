@@ -1,4 +1,4 @@
-"""Thin CLI for the implemented foundation and explicit future run boundary."""
+"""Thin CLI for validation, owned runtime management and evidence-backed rehearsals."""
 
 from pathlib import Path
 from typing import Annotated
@@ -13,12 +13,17 @@ from pg_rehearse.config import load_config
 from pg_rehearse.doctor import check_environment
 from pg_rehearse.errors import ConfigurationError, ExitCode, RunInterrupted, RuntimeLifecycleError
 from pg_rehearse.models import CleanupStatus
-from pg_rehearse.orchestrator import check_disposable_postgres, termination_signals
+from pg_rehearse.orchestrator import (
+    check_disposable_postgres,
+    run_rehearsal,
+    termination_signals,
+)
+from pg_rehearse.report.terminal import render_terminal
 from pg_rehearse.runtime.cleanup import recover_run
 from pg_rehearse.runtime.docker import RunEnvironment, RuntimeOptions
 
 app = typer.Typer(
-    no_args_is_help=True, help="Rehearse PostgreSQL migrations. Disposable runtime stage."
+    no_args_is_help=True, help="Rehearse PostgreSQL migrations in disposable databases."
 )
 console = Console()
 error_console = Console(stderr=True)
@@ -97,17 +102,28 @@ def run(
         Path,
         typer.Option("--config", "-c", help="Path to the rehearsal YAML file."),
     ] = Path("examples/orders/rehearsal.yml"),
+    state_dir: Annotated[Path, typer.Option(help="Directory for durable run manifests.")] = Path(
+        ".pg-rehearse/runs"
+    ),
 ) -> None:
-    """Reserved for the database pipeline. Currently returns an inconclusive exit code."""
+    """Rehearse migrations on fresh branches and save final JSON/Markdown reports."""
     try:
-        load_config(config)
+        with termination_signals():
+            result, directory = run_rehearsal(config, state_dir=state_dir)
     except ConfigurationError as exc:
         error_console.print(f"Invalid configuration: {exc}", markup=False)
         raise typer.Exit(exc.exit_code) from exc
-    error_console.print(
-        "Database rehearsal is not implemented yet. Follow features 1–7 in IMPLEMENTATION_ORDER.md."
+    except RunInterrupted as exc:
+        _show_runtime_error(exc)
+        raise typer.Exit(128 + exc.signum) from exc
+    except RuntimeLifecycleError as exc:
+        _show_runtime_error(exc)
+        raise typer.Exit(ExitCode.INFRASTRUCTURE_ERROR) from exc
+    render_terminal(result, console)
+    console.print(
+        f"Reports: {directory / 'report.json'} and {directory / 'report.md'}", markup=False
     )
-    raise typer.Exit(ExitCode.INCONCLUSIVE)
+    raise typer.Exit(result.exit_code)
 
 
 def _show_runtime_error(exc: BaseException) -> None:

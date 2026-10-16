@@ -140,3 +140,36 @@ def test_contract_operation_ids_are_unique() -> None:
 def test_result_expectations_are_consistent(expectations: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         SemanticAssertions.model_validate(expectations)
+
+
+def test_failed_application_probe_cannot_be_wrapped_in_a_pass() -> None:
+    from pg_rehearse.models import ApplicationResult
+
+    with pytest.raises(ValidationError, match="failed application probes"):
+        RunResult(
+            run_id="example",
+            completion=Completion.COMPLETE,
+            verdict=Verdict.PASS,
+            coverage=Coverage(required=["application"], completed=["application"]),
+            cleanup=CleanupStatus.COMPLETE,
+            applications=[
+                ApplicationResult(
+                    probe_id="user.get",
+                    phase="app_candidate",
+                    version="candidate",
+                    actor="candidate",
+                    revision="test",
+                    success=False,
+                )
+            ],
+        )
+
+
+@pytest.mark.parametrize(
+    "claim", [{"committed": "true"}, {"backend_pid": "123"}, {"backend_pid": True}]
+)
+def test_session_and_commit_wire_facts_are_strict(claim: dict) -> None:
+    with pytest.raises(ValidationError):
+        OperationResult(
+            operation_id="query", version="v1", phase="mixed_versions", success=True, **claim
+        )

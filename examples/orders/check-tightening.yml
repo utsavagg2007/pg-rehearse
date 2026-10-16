@@ -1,0 +1,11 @@
+schema_version: 1
+name: orders-check-tightening-incompatible
+postgres_image: postgres:17
+schema_path: schema/base.sql
+fixtures_path: fixtures/orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-check.yml
+migrations:
+- id: positive-amount
+  path: migrations/tighten_amount.sql

@@ -37,7 +37,10 @@ def cleanup_resources(
     manifest.state = "cleaning"
     persist()
     try:
-        for resource in sorted(manifest.resources, key=lambda item: item.kind != "container"):
+        for resource in sorted(
+            manifest.resources,
+            key=lambda item: {"worker": 0, "container": 1, "network": 2}[item.kind],
+        ):
             if resource.removed:
                 continue
             remaining = deadline - time.monotonic()
@@ -47,7 +50,8 @@ def cleanup_resources(
             # Requests accepts fractional timeouts; Docker's stubs annotate only int.
             cast(Any, client.api).timeout = min(5.0, remaining)
             try:
-                collection = client.containers if resource.kind == "container" else client.networks
+                is_container = resource.kind in {"container", "worker"}
+                collection = client.containers if is_container else client.networks
                 # The intent covers a crash between create() and saving the ID.
                 target = collection.get(resource.resource_id or resource.name)
                 if resource.resource_id and target.id != resource.resource_id:
@@ -55,7 +59,7 @@ def cleanup_resources(
                     continue
                 labels = (
                     target.attrs.get("Config", {}).get("Labels", {})
-                    if resource.kind == "container"
+                    if is_container
                     else target.attrs.get("Labels", {})
                 ) or {}
                 if any(
@@ -69,7 +73,7 @@ def cleanup_resources(
                     errors.append(f"{resource.kind}:cleanup_deadline_exceeded")
                     continue
                 cast(Any, client.api).timeout = min(5.0, remaining)
-                if resource.kind == "container":
+                if is_container:
                     # Data is in tmpfs; never delete attached volumes.
                     cast(Container, target).remove(force=True, v=False)
                 else:

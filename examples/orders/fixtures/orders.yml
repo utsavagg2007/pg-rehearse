@@ -1,4 +1,4 @@
-# Validated explicit fixture format. Database loading remains feature 4.
+# Explicit deterministic fixtures, validated and loaded by the isolated worker.
 schema_version: 1
 tables:
   users:

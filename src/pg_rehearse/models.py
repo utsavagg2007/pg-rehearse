@@ -56,8 +56,8 @@ class InputModel(StrictModel):
     @field_validator("schema_version", mode="before", check_fields=False)
     @classmethod
     def exact_schema_version(cls, value: object) -> object:
-        if type(value) is not int or value != 1:
-            raise ValueError("schema_version must be integer 1")
+        if type(value) is not int:
+            raise ValueError("schema_version must be an integer")
         return value
 
     @model_validator(mode="after")
@@ -91,8 +91,10 @@ class TransactionMode(StrEnum):
 
 class Timeouts(InputModel):
     startup_seconds: int = Field(default=60, gt=0, le=600, strict=True)
+    worker_seconds: int = Field(default=60, gt=0, le=3600, strict=True)
     statement_ms: int = Field(default=5000, gt=0, le=600_000, strict=True)
     lock_ms: int = Field(default=1000, gt=0, le=600_000, strict=True)
+    application_ms: int = Field(default=5000, gt=0, le=600_000, strict=True)
 
     @model_validator(mode="after")
     def coherent_deadlines(self) -> Self:
@@ -112,25 +114,6 @@ class MigrationStep(InputModel):
 class ContractPaths(InputModel):
     deployed: RelativePath
     candidate: RelativePath | None = None
-
-
-class RunSpec(InputModel):
-    schema_version: Literal[1] = 1
-    name: str = Field(min_length=1, max_length=200, pattern=r"\S")
-    postgres_image: str = Field(default="postgres:17", pattern=POSTGRES_IMAGE_PATTERN)
-    schema_path: RelativePath
-    fixtures_path: RelativePath | None = None
-    contracts: ContractPaths
-    migrations: list[MigrationStep] = Field(min_length=1, max_length=100)
-    seed: int = Field(default=42, ge=0, le=2**32 - 1, strict=True)
-    timeouts: Timeouts = Field(default_factory=Timeouts)
-
-    @model_validator(mode="after")
-    def unique_migration_ids(self) -> Self:
-        ids = [step.id for step in self.migrations]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Migration IDs must be unique")
-        return self
 
 
 class SemanticAssertions(InputModel):
@@ -168,6 +151,72 @@ class ContractSpec(InputModel):
         ids = [operation.id for operation in self.operations]
         if len(ids) != len(set(ids)):
             raise ValueError("Operation IDs must be unique within a contract")
+        return self
+
+
+class RolloutOperation(OperationSpec):
+    actor: Literal["deployed", "candidate"]
+
+
+class RolloutPhase(InputModel):
+    id: Literal["mixed_versions", "candidate_only", "app_rollback"]
+    operations: list[RolloutOperation] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_operations(self) -> Self:
+        ids = [op.id for op in self.operations]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Rollout operation IDs must be unique within a phase")
+        if any(not op.required for op in self.operations):
+            raise ValueError("Declared rollout operations must be required")
+        return self
+
+
+class RolloutSpec(InputModel):
+    persistent_old_sessions: int = Field(default=1, ge=1, le=4)
+    phases: list[RolloutPhase] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def schema_first_order(self) -> Self:
+        if [phase.id for phase in self.phases] != [
+            "mixed_versions",
+            "candidate_only",
+            "app_rollback",
+        ]:
+            raise ValueError("Rollout phases must be mixed_versions, candidate_only, app_rollback")
+        return self
+
+
+class ApplicationsSpec(InputModel):
+    adapter: Literal["orders"]
+    user_id: int = Field(gt=0)
+    expected_name: str = Field(min_length=1, max_length=1000)
+    order_id_base: int = Field(default=9000, gt=0, lt=2**63 - 3)
+    candidate_status: Literal["pending", "processing"] = "pending"
+
+
+class RunSpec(InputModel):
+    schema_version: Literal[1] = 1
+    name: str = Field(min_length=1, max_length=200, pattern=r"\S")
+    postgres_image: str = Field(default="postgres:17", pattern=POSTGRES_IMAGE_PATTERN)
+    schema_path: RelativePath
+    fixtures_path: RelativePath | None = None
+    contracts: ContractPaths
+    migrations: list[MigrationStep] = Field(min_length=1, max_length=100)
+    seed: int = Field(default=42, ge=0, le=2**32 - 1, strict=True)
+    rollout: RolloutSpec | None = None
+    applications: ApplicationsSpec | None = None
+    timeouts: Timeouts = Field(default_factory=Timeouts)
+
+    @model_validator(mode="after")
+    def unique_migration_ids(self) -> Self:
+        ids = [step.id for step in self.migrations]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Migration IDs must be unique")
+        if self.rollout and not self.contracts.candidate:
+            raise ValueError("Rollout requires a candidate contract")
+        if self.applications and not self.rollout:
+            raise ValueError("Application probes require declared rollout phases")
         return self
 
 
@@ -209,7 +258,7 @@ class CleanupStatus(StrEnum):
 
 class AssertionResult(StrictModel):
     name: str
-    passed: bool
+    passed: bool = Field(strict=True)
     expected: Any = None
     actual: Any = None
 
@@ -218,10 +267,34 @@ class OperationResult(StrictModel):
     operation_id: str
     version: str
     phase: str
-    success: bool
+    success: bool = Field(strict=True)
     sqlstate: str | None = Field(default=None, pattern=r"^[0-9A-Z]{5}$")
     error: str | None = None
+    error_kind: (
+        Literal[
+            "sql_error",
+            "assertion_error",
+            "result_limit",
+            "unsupported_result",
+            "operation_deadline",
+            "connection_error",
+        ]
+        | None
+    ) = None
     assertions: list[AssertionResult] = Field(default_factory=list)
+    actor: str | None = None
+    backend_pid: int | None = Field(default=None, gt=0, strict=True)
+    committed: bool = Field(default=False, strict=True)
+
+
+class BaselineEvidence(InputModel):
+    success: bool
+    seed: int
+    schema_statements: int = Field(ge=0)
+    table_rows: dict[str, int] = Field(default_factory=dict)
+    data_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    error_kind: Literal["schema_error", "fixture_error", "verification_error"] | None = None
+    sqlstate: str | None = Field(default=None, pattern=r"^[0-9A-Z]{5}$")
 
 
 class Finding(StrictModel):
@@ -231,6 +304,92 @@ class Finding(StrictModel):
     operation_id: str | None = None
     phase: str | None = None
     evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class IndexFact(InputModel):
+    name: str
+    table: str
+    valid: bool
+    ready: bool
+    method: str
+    unique: bool
+    columns: list[str]
+    options: list[int]
+    definition: str = Field(min_length=1)
+
+
+class CheckFact(InputModel):
+    name: str
+    table: str
+    validated: bool
+    definition: str = Field(min_length=1)
+
+
+class CatalogState(InputModel):
+    columns: dict[str, list[str]]
+    indexes: list[IndexFact]
+    checks: list[CheckFact]
+
+
+class PhaseResult(InputModel):
+    completion: Literal["complete", "partial"]
+    id: str
+    checks: list[str]
+    barrier: Literal["baseline_verified", "migration_committed", "committed_writes"]
+
+
+class ApplicationResult(InputModel):
+    probe_id: str
+    phase: str
+    version: Literal["deployed", "candidate"]
+    actor: str
+    revision: str
+    process_id: int | None = Field(default=None, gt=0)
+    backend_pid: int | None = Field(default=None, gt=0, strict=True)
+    exit_code: int | None = None
+    http_status: int | None = Field(default=None, ge=100, le=599)
+    success: bool
+    error_kind: (
+        Literal[
+            "sql_error",
+            "domain_error",
+            "assertion_error",
+            "process_error",
+            "application_deadline",
+            "invalid_response",
+            "connection_error",
+        ]
+        | None
+    ) = None
+    sqlstate: str | None = Field(default=None, pattern=r"^[0-9A-Z]{5}$")
+    assertions: list[AssertionResult] = Field(default_factory=list)
+
+
+class MigrationResult(InputModel):
+    step_id: str
+    phase: str
+    transaction: Annotated[TransactionMode, BeforeValidator(transaction_mode)]
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    statements: int = Field(ge=1)
+    executed: int = Field(ge=0)
+    committed: bool
+    sqlstate: str | None = Field(default=None, pattern=r"^[0-9A-Z]{5}$")
+    error_kind: Literal["sql_error", "migration_deadline", "connection_error"] | None = None
+    catalog_before: CatalogState | None = None
+    catalog_after: CatalogState | None = None
+
+
+class TemplateEvidence(InputModel):
+    database: Literal["rehearsal"] = "rehearsal"
+    identity: str = Field(pattern=r"^[a-f0-9]{64}$")
+    data_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    sealed: bool
+
+
+class BranchEvidence(InputModel):
+    database: str
+    phase: str
+    data_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class Coverage(StrictModel):
@@ -257,7 +416,14 @@ class RunResult(StrictModel):
     verdict: Verdict = Verdict.INCONCLUSIVE
     coverage: Coverage = Field(default_factory=Coverage)
     operations: list[OperationResult] = Field(default_factory=list)
+    baseline: BaselineEvidence | None = None
+    migrations: list[MigrationResult] = Field(default_factory=list)
+    template: TemplateEvidence | None = None
+    branches: list[BranchEvidence] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
+    phases: list[PhaseResult] = Field(default_factory=list)
+    applications: list[ApplicationResult] = Field(default_factory=list)
+    evidence_levels: list[str] = Field(default_factory=lambda: ["sql_contract"])
     cleanup: CleanupStatus = CleanupStatus.PENDING
 
     @model_validator(mode="after")
@@ -277,6 +443,11 @@ class RunResult(StrictModel):
             for operation in self.operations
         ):
             raise ValueError("A passing verdict cannot contain failed operations or assertions")
+        if any(
+            not app.success or any(not a.passed for a in app.assertions)
+            for app in self.applications
+        ):
+            raise ValueError("A passing verdict cannot contain failed application probes")
         return self
 
     @property

@@ -17,9 +17,10 @@ from pydantic import Field
 from requests.exceptions import RequestException
 
 from pg_rehearse.errors import CleanupError, ReadinessTimeout, RuntimeLifecycleError
-from pg_rehearse.models import POSTGRES_IMAGE_PATTERN, CleanupStatus, StrictModel
+from pg_rehearse.models import POSTGRES_IMAGE_PATTERN, CleanupStatus, StrictModel, Timeouts
 from pg_rehearse.runtime.cleanup import cleanup_resources
-from pg_rehearse.runtime.manifest import ManifestStore, ResourceRecord, resource_name
+from pg_rehearse.runtime.manifest import ManifestStore, ResourceRecord, RunManifest, resource_name
+from pg_rehearse.worker_protocol import RehearsalEvidence, WorkerEvidence, WorkerInputs
 
 
 class RuntimeOptions(StrictModel):
@@ -54,6 +55,17 @@ class DockerRuntime:
         self.state_dir = state_dir
         self.options = options or RuntimeOptions()
         self._client = client
+        self.manifest_path: Path | None = None
+        self._active: tuple[DockerClient, ManifestStore, RunManifest, RunEnvironment] | None = None
+
+    def execute_worker(
+        self, environment: RunEnvironment, inputs: WorkerInputs, timeouts: Timeouts
+    ) -> WorkerEvidence:
+        from pg_rehearse.runtime.worker import execute_worker
+
+        if self._active is None or self._active[3] is not environment:
+            raise RuntimeLifecycleError("Worker execution requires this runtime's active run")
+        return execute_worker(*self._active[:3], environment, inputs, timeouts)
 
     def _wait_ready(self, client: DockerClient, container: Container) -> None:
         deadline = time.monotonic() + self.options.startup_seconds
@@ -77,9 +89,23 @@ class DockerRuntime:
         finally:
             client.api.timeout = previous_timeout
 
+    def rehearse(
+        self,
+        environment: RunEnvironment,
+        inputs: WorkerInputs,
+        timeouts: Timeouts,
+        evidence: RehearsalEvidence,
+    ) -> None:
+        from pg_rehearse.runtime.worker import rehearse
+
+        if self._active is None or self._active[3] is not environment:
+            raise RuntimeLifecycleError("Rehearsal requires this run's active environment")
+        rehearse(*self._active[:3], environment, inputs, timeouts, evidence)
+
     @contextmanager
     def provision(self) -> Iterator[RunEnvironment]:
         store, manifest = ManifestStore.create(self.state_dir, self.options.image)
+        self.manifest_path = store.path
         client = self._client
         failure: BaseException | None = None
         with store.lock():
@@ -183,7 +209,7 @@ class DockerRuntime:
                 container_id, network_id = container.id, network.id
                 if not container_id or not network_id:
                     raise RuntimeLifecycleError("Docker did not return allocated resource IDs")
-                yield RunEnvironment(
+                environment = RunEnvironment(
                     manifest.run_id,
                     store.path,
                     container_id,
@@ -192,6 +218,8 @@ class DockerRuntime:
                     digest,
                     container_record.name,
                 )
+                self._active = (client, store, manifest, environment)
+                yield environment
             except BaseException as exc:
                 failure = exc
                 exc.add_note(f"Run manifest: {store.path}")
@@ -203,6 +231,7 @@ class DockerRuntime:
                     ) from exc
                 raise
             finally:
+                self._active = None
                 try:
                     status = cleanup_resources(
                         client, store, manifest, timeout_seconds=self.options.cleanup_seconds

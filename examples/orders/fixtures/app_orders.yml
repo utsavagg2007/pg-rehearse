@@ -1,0 +1,20 @@
+schema_version: 1
+tables:
+  users:
+  - id: 7
+    name: Ada
+    email: ada@example.test
+    full_name: Ada
+  - id: 8
+    name: Grace
+    email: grace@example.test
+    full_name: Grace
+  orders:
+  - id: 101
+    user_id: 7
+    status: pending
+    amount_cents: 12500
+  - id: 102
+    user_id: 8
+    status: complete
+    amount_cents: 7400

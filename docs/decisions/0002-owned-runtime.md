@@ -23,5 +23,6 @@ The established `.pg-rehearse/runs` directory convention is retained. SIGINT and
 SIGTERM cause teardown; SIGKILL requires explicit `recover`. Cleanup failures stay
 visible and may be retried. Thirteen real integration cases verify the lifecycle.
 
-Worker role grants (feature 3), template reuse (feature 8), and the full migration
-pipeline remain pending. See `docs/runtime.md` for commands and supported limits.
+Worker role grants were completed in feature 3; see `../worker.md`. Features 6–8
+now add committed migrations, final reports and sealed run-local templates with
+fresh branches. See `../rehearsal.md` and `../runtime.md` for behavior and limits.

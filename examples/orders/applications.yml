@@ -1,0 +1,83 @@
+schema_version: 1
+name: orders-reference-app-compatible
+postgres_image: postgres:17
+schema_path: schema/app_base.sql
+fixtures_path: fixtures/app_orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-v1.yml
+  candidate: contracts/candidate-v2.yml
+migrations:
+- id: add-order-user-index
+  path: migrations/create_order_user_index.sql
+  transaction: transaction
+rollout:
+  persistent_old_sessions: 2
+  phases:
+  - id: mixed_versions
+    operations:
+    - id: old-write
+      actor: deployed
+      sql: UPDATE orders SET amount_cents=12501 WHERE id=101 RETURNING id,amount_cents
+      expect:
+        rows:
+        - - 101
+          - 12501
+        row_count: 1
+    - id: new-read
+      actor: candidate
+      sql: SELECT id,amount_cents FROM orders WHERE id=101
+      expect:
+        rows:
+        - - 101
+          - 12501
+        row_count: 1
+    - id: new-write
+      actor: candidate
+      sql: UPDATE orders SET amount_cents=12502 WHERE id=101 RETURNING id,amount_cents
+      expect:
+        rows:
+        - - 101
+          - 12502
+        row_count: 1
+    - id: old-read
+      actor: deployed
+      sql: SELECT id,amount_cents FROM orders WHERE id=101
+      expect:
+        rows:
+        - - 101
+          - 12502
+        row_count: 1
+  - id: candidate_only
+    operations:
+    - id: target-read
+      actor: candidate
+      sql: SELECT id,amount_cents FROM orders WHERE id=101
+      expect:
+        rows:
+        - - 101
+          - 12502
+        row_count: 1
+  - id: app_rollback
+    operations:
+    - id: candidate-write
+      actor: candidate
+      sql: UPDATE orders SET amount_cents=12503 WHERE id=101 RETURNING id,amount_cents
+      expect:
+        rows:
+        - - 101
+          - 12503
+        row_count: 1
+    - id: old-read
+      actor: deployed
+      sql: SELECT id,amount_cents FROM orders WHERE id=101
+      expect:
+        rows:
+        - - 101
+          - 12503
+        row_count: 1
+applications:
+  adapter: orders
+  user_id: 7
+  expected_name: Ada
+  candidate_status: pending

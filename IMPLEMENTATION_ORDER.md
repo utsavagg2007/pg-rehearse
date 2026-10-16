@@ -1,6 +1,6 @@
 # Implementation order
 
-Updated: 2026-10-15. Features 1 and 2 are implemented and verified. Features 3–19
+Updated: 2026-10-16. Features 1–11 are implemented and verified locally. Features 12–19
 remain pending or partial. Follow this sequence from the shared conversation.
 Update `PROGRESS.md` as each acceptance criterion is actually verified.
 
@@ -41,7 +41,9 @@ Document the support boundary and test the PostgreSQL parser against all example
 
 ## 3. Isolated worker and scoped database roles
 
-Modules: `worker.py`, `runtime/roles.py`, `docker/worker.Dockerfile`.
+Status: implemented. `run` verifies scoped worker connections on every experiment. See `docs/worker.md`.
+
+Modules: `worker_protocol.py`, `runtime/worker.py`, `worker.py`, `runtime/roles.py`, `docker/worker.Dockerfile`.
 
 - Run the worker on the private run network with no Docker socket or host credentials.
 - Separate setup, migration, workload, and observer roles with minimal grants.
@@ -52,6 +54,9 @@ Acceptance: real isolation tests verify role permissions, absent Docker access,
 readiness and execution deadlines, worker crash handling, and no secret leakage.
 
 ## 4. Baseline loading and deterministic fixtures
+
+Status: implemented. Atomic setup, ordered parameterized fixtures, identity resets
+and deterministic readback evidence are verified. See `docs/baseline.md`.
 
 Modules: `fixtures/seed.py`, `config.py`, `models.py`.
 
@@ -64,6 +69,10 @@ fail as setup errors; schema loading and expected orders rows are verified on Po
 
 ## 5. SQL contracts and semantic assertions
 
+Status: implemented. Deployed baseline probes run in independent rollback-only
+transactions with typed assertions, SQLSTATE and required coverage. Deployed and
+candidate post-migration phases are implemented in Step 6. See `docs/baseline.md`.
+
 Modules: `workload/contracts.py`, `workload/runner.py`, `workload/assertions.py`.
 
 - Execute bound parameters; capture version, phase, SQLSTATE, and per-assertion evidence.
@@ -74,6 +83,9 @@ Acceptance: deployed baseline queries return the expected rows; wrong columns,
 values, or counts fail clearly; a failing operation does not poison the next probe.
 
 ## 6. Transaction-aware migrations and rename detection
+
+Status: implemented and verified locally. Ordered transaction/autocommit execution, committed rename detection and independent deployed/candidate probes.
+See `docs/rehearsal.md` and `PROGRESS.md`.
 
 Modules: `migration/executor.py`, `orchestrator.py`.
 
@@ -86,6 +98,9 @@ the candidate query sees the preserved value, and the additive control remains v
 Classify baseline failures separately; do not blame migrations that never executed.
 
 ## 7. Compatibility findings and terminal/JSON/Markdown reports
+
+Status: implemented and verified locally. Pure evidence/coverage analysis and post-cleanup reports with documented exit codes.
+See `docs/rehearsal.md` and `PROGRESS.md`.
 
 Modules: `analysis/compatibility.py`, `analysis/coverage.py`, `report/terminal.py`,
 `report/json_report.py`, `report/markdown.py`, `cli.py`.
@@ -103,6 +118,9 @@ The report identifies the old query, phase, SQLSTATE, assertion details, and cle
 
 ## 8. Immutable templates and fresh database clones
 
+Status: implemented and verified locally. Sealed run-local template identity, independent verified branches and owned teardown.
+See `docs/rehearsal.md` and `PROGRESS.md`.
+
 Modules: `fixtures/template.py`, `fixtures/clone.py`.
 
 - Build verified templates keyed by relevant input identity; prevent mutable reuse.
@@ -113,6 +131,9 @@ Acceptance: independent branches begin with identical data and cannot influence 
 another; stale template identity is rejected; errors and cleanup do not leak clones.
 
 ## 9. Deployment phases, persistent sessions, mixed writes, and rollback
+
+Status: implemented. See `docs/rollout.md` for supported declarations and boundaries,
+and `PROGRESS.md` for checks actually completed.
 
 Modules: `rollout/phases.py`, `rollout/mixed_writes.py`, `rollout/rollback.py`,
 `workload/sessions.py`.
@@ -127,6 +148,9 @@ incompatibility are visible even when the migration itself succeeds.
 
 ## 10. Real old/new application probes
 
+Status: implemented. See `docs/rollout.md` for supported declarations and boundaries,
+and `PROGRESS.md` for checks actually completed.
+
 Modules: `rollout/apps.py`, `examples/orders/apps/`.
 
 - Add independently runnable old and new orders application versions.
@@ -137,6 +161,9 @@ Acceptance: reproduce a real deployed-version failure and a candidate success;
 application probe crashes are distinguished from compatibility findings.
 
 ## 11. Complete index and CHECK support alongside rename cases
+
+Status: implemented. See `docs/rollout.md` for supported declarations and boundaries,
+and `PROGRESS.md` for checks actually completed.
 
 Modules: `migration/classify.py`, `migration/preflight.py`, `migration/executor.py`.
 

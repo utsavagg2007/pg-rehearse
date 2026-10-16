@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27,<2"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [project]
@@ -24,6 +24,7 @@ pg-rehearse = "pg_rehearse.cli:app"
 [dependency-groups]
 dev = [
   "build>=1.2,<2",
+  "hatchling==1.32.4",
   "mypy>=1.15,<2",
   "pytest>=8.3,<10",
   "pytest-cov>=6,<8",
@@ -37,7 +38,7 @@ packages = ["src/pg_rehearse"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "/src", "/tests", "/examples", "/docs", "/docker", "/benchmarks", "/evaluation",
+  "/src", "/tests", "/examples", "/docs", "/docker", "/benchmarks", "/evaluation", "/scripts",
   "/*.md", "/pyproject.toml", "/uv.lock", "/Makefile", "/.python-version",
   "/.github", "/.gitignore", "/.dockerignore", "/.editorconfig",
 ]

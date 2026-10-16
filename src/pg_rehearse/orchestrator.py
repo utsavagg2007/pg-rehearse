@@ -11,6 +11,7 @@ from pg_rehearse.analysis.compatibility import analyze
 from pg_rehearse.config import LoadedConfig, load_config
 from pg_rehearse.errors import RunInterrupted, RuntimeLifecycleError
 from pg_rehearse.models import Completion, Finding, RunResult, Severity, Verdict
+from pg_rehearse.report.html import write_html
 from pg_rehearse.report.json_report import write_json
 from pg_rehearse.report.markdown import write_markdown
 from pg_rehearse.runtime.docker import DockerRuntime, RunEnvironment, RuntimeOptions
@@ -81,9 +82,14 @@ def run_rehearsal(
     store = ManifestStore(runtime.manifest_path)
     manifest = store.load()
     result = analyze(loaded, inputs, evidence, manifest, infrastructure_error=failure is not None)
+    writers = (
+        (write_json, "report.json"),
+        (write_markdown, "report.md"),
+        (write_html, "report.html"),
+    )
     try:
-        write_json(store.path.parent / "report.json", result)
-        write_markdown(store.path.parent / "report.md", result)
+        for writer, name in writers:
+            writer(store.path.parent / name, result)
     except OSError:
         result.completion = Completion.INFRASTRUCTURE_ERROR
         if result.verdict != Verdict.FAIL:
@@ -95,10 +101,14 @@ def run_rehearsal(
                 explanation="A final report could not be saved.",
             )
         )
-        try:
-            write_json(store.path.parent / "report.json", result)
-        except OSError:
-            pass  # The manifest and worker receipts remain when report storage is unavailable.
+        for writer, name in writers:
+            try:
+                writer(store.path.parent / name, result)
+            except OSError:
+                try:
+                    (store.path.parent / name).unlink(missing_ok=True)
+                except OSError:
+                    pass  # Storage loss can prevent both replacing and removing a stale report.
         raise RuntimeLifecycleError(
             f"Cannot save final reports; manifest retained at {store.path}"
         ) from None

@@ -1,9 +1,14 @@
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
+import yaml
+from typer.testing import CliRunner
 
+from pg_rehearse.cli import app
 from pg_rehearse.config import load_config, load_yaml, resolve_input
 from pg_rehearse.errors import ConfigurationError
+from pg_rehearse.models import relative_path
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[2] / "examples" / "orders"
 
@@ -78,3 +83,22 @@ def test_rejects_directory_input(tmp_path: Path) -> None:
     (tmp_path / "directory").mkdir()
     with pytest.raises(ConfigurationError, match="regular file"):
         resolve_input(tmp_path, Path("directory"))
+
+
+def test_surrogate_path_is_invalid_input_before_allocation(
+    rehearsal_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = rehearsal_project / "rehearsal.yml"
+    data = yaml.safe_load(path.read_text())
+    data["schema_path"] = "bad\ud800.sql"
+    path.write_text(yaml.safe_dump(data))
+    with pytest.raises(ConfigurationError, match="UTF-8"):
+        load_config(path)
+    with pytest.raises(ValueError, match="UTF-8"):
+        relative_path(Path(data["schema_path"]))
+    allocate = Mock(side_effect=AssertionError("Docker must not be reached"))
+    monkeypatch.setattr("pg_rehearse.orchestrator.DockerRuntime", allocate)
+    for command in ("validate", "run"):
+        result = CliRunner().invoke(app, [command, "--config", str(path)])
+        assert result.exit_code == 2, result.output
+    allocate.assert_not_called()

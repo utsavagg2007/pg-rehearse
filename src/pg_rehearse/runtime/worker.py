@@ -20,12 +20,15 @@ from pg_rehearse.runtime.roles import Role, bootstrap_sql, new_credentials
 from pg_rehearse.worker_protocol import (
     MAX_RESPONSE_BYTES,
     WORKER_IMAGE,
+    BenchmarkArm,
     RehearsalEvidence,
     WorkerEvidence,
     WorkerFailure,
     WorkerInputs,
     WorkerRequest,
     WorkerTask,
+    experiment_id,
+    experiment_tasks,
     task_database,
 )
 
@@ -98,11 +101,13 @@ def execute_worker(
     timeouts: Timeouts,
     *,
     task: WorkerTask = "baseline",
+    trial: int | None = None,
+    arm: BenchmarkArm | None = None,
     credentials: dict[Role, SecretStr] | None = None,
     deadline_at: float | None = None,
 ) -> WorkerEvidence:
     """Caller holds the run lock and guarantees ownership-checked cleanup on every exit."""
-    slot = None if task == "baseline" else task
+    slot = None if task == "baseline" else experiment_id(task, trial, arm)
     if any(resource.kind == "worker" and resource.slot == slot for resource in manifest.resources):
         raise WorkerError("This run already allocated its worker")
     previous_timeout = client.api.timeout
@@ -129,7 +134,9 @@ def execute_worker(
             inputs=inputs,
             timeouts=timeouts,
             task=task,
-            database=task_database(environment.run_id, task),
+            database=task_database(environment.run_id, task, trial, arm),
+            trial=trial,
+            arm=arm,
         )
         deadline = min(
             time.monotonic() + timeouts.worker_seconds,
@@ -212,7 +219,7 @@ def execute_worker(
         receipt_name = (
             "worker-evidence.json"
             if task in {"baseline", "baseline_probe"}
-            else f"{task}-evidence.json"
+            else f"{experiment_id(task, trial, arm)}-evidence.json"
         )
         path = store.path.parent / receipt_name
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -240,7 +247,7 @@ def rehearse(
 ) -> None:
     """Seed once, seal, then run independent baseline and post-migration branches."""
     from pg_rehearse.config import load_worker_config
-    from pg_rehearse.fixtures.clone import clone_sql
+    from pg_rehearse.fixtures.clone import clone_sql, drop_clone_sql
     from pg_rehearse.fixtures.template import seal_template_sql, template_identity
 
     loaded = load_worker_config(inputs)
@@ -288,16 +295,13 @@ def rehearse(
         timeout_seconds=remaining(),
     )
     evidence.template = template
-    tasks: list[WorkerTask] = ["baseline_probe", "post_deployed"]
-    if loaded.candidate_contract:
-        tasks.append("post_candidate")
-    if loaded.spec.rollout:
-        tasks.extend(["rollout", "rollback"])
-    for task in tasks:
+    for task, trial, arm in experiment_tasks(loaded):
         bootstrap_roles(
             client,
             environment.container_id,
-            clone_sql(manifest.run_id, manifest.ownership_token, template, identity, task),
+            clone_sql(
+                manifest.run_id, manifest.ownership_token, template, identity, task, trial, arm
+            ),
             database="postgres",
             timeout_seconds=remaining(),
         )
@@ -309,10 +313,22 @@ def rehearse(
             inputs,
             timeouts,
             task=task,
+            trial=trial,
+            arm=arm,
             credentials=credentials,
             deadline_at=deadline,
         )
         evidence.experiments.append(experiment)
+        if task == "benchmark" and trial is not None and arm is not None:
+            bootstrap_roles(
+                client,
+                environment.container_id,
+                drop_clone_sql(
+                    manifest.run_id, manifest.ownership_token, identity, task, trial, arm
+                ),
+                database="postgres",
+                timeout_seconds=remaining(),
+            )
         if experiment.baseline is None or (
             not experiment.baseline.success
             or experiment.baseline.data_sha256 != template.data_sha256

@@ -103,3 +103,12 @@ authentication failure/redaction, crashes, invalid evidence, output limits, lost
 allocation responses, recovery and ownership refusal. Fixed test-only SQL verifies
 these primitives. Baseline/contract tests also verify real schema and fixture
 loading, assertions, rollback isolation and recovery after failures.
+
+Optional diagnostic tasks retain contention-evidence.json, benchmark_<trial>_<arm>-evidence.json,
+plan_baseline-evidence.json and plan_candidate-evidence.json. Trial and arm identities
+are validated in requests, database names, manifest slots and receipts. Contention
+validates sampled actor/barrier evidence; benchmarks validate the exact warmup and
+attempt schedule; plans validate analyze consent, original tree and commit state.
+Raw plan receipts are private and may contain literals; shared summaries normalize
+expressions. See [observations.md](observations.md). Finished benchmark databases
+have an additional exact ownership marker checked before early host-only release.

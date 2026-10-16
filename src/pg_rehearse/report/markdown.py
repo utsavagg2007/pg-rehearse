@@ -37,6 +37,19 @@ def render_markdown(result: RunResult) -> str:
         lines += [f"- Phase {plain(phase.id)}: {phase.completion}; barrier {phase.barrier}."]
     for app in result.applications:
         lines += ["", block(app.model_dump_json(indent=2), "json"), ""]
+    for label, payload in (
+        ("Contention", result.contention.model_dump(mode="json") if result.contention else None),
+        ("Performance (advisory)", result.performance),
+        ("Benchmark arms and raw samples", result.benchmarks),
+        ("Diagnostic plans", result.plans),
+    ):
+        if payload:
+            lines += [
+                f"## {label}",
+                "",
+                block(json.dumps(payload, ensure_ascii=False, indent=2), "json"),
+                "",
+            ]
     for step in result.migrations:
         lines += [
             f"- Migration {plain(step.phase)}/{plain(step.step_id)}: "
@@ -93,8 +106,9 @@ def render_markdown(result: RunResult) -> str:
     lines += [
         "",
         "Scope: declared SQL contracts, optional schema-first rollout and optional reference HTTP "
-        "application probes on disposable PostgreSQL 17. In-migration traffic, contention, "
-        "performance and production equivalence are not covered.",
+        "application probes on disposable PostgreSQL 17. Optional controlled contention, "
+        "advisory sequential benchmarks and separate diagnostic plans have explicit evidence. "
+        "These experiments do not certify production equivalence.",
         "",
     ]
     return "\n".join(lines)

@@ -4,195 +4,466 @@ Updated: 2026-10-16 (Asia/Kolkata).
 
 ## Current checkpoint
 
-**Steps 1–11 are implemented.** The disposable PostgreSQL rehearsal now supports
-strict preflight, scoped workers, verified templates/clones, committed migrations,
-semantic SQL assertions, final reports, explicit schema-first rollout sessions,
-committed mixed-version writes, independent application rollback, real maintained
-old/new HTTP probes and index/CHECK catalog verification.
+**Steps 1–18 are implemented and locally verified.** The complete frozen-source
+suite passed **444 tests in 418.72s**: 340 unit cases plus 104 Docker-enabled cases
+(103 real PostgreSQL cases and one unsupported preflight refusal).
+The standalone labeled matrix matched **7/7**, with zero false passes/failures in
+that fixed set. Step 19 release notes, upgrade/release checklist, pilot protocol and
+execution guide are prepared. The user requested leaving independent pilot
+acceptance pending because no external feedback is available. Final distribution
+installation checks passed for both wheel and rebuilt sdist outside the checkout.
+Lint, formatting, strict typing and the offline 45-package lock check pass. Final
+managed Docker inventory is zero containers and zero networks. Remote CI and
+browser visual QA remain unverified.
 
-The final regression passed **334 tests**, including **259 unit cases** and **75
-real PostgreSQL cases**, in **340.10 seconds**, against the rebuilt worker. Lint,
-formatting, strict types, the offline lock check and distribution builds passed.
-Existing SQL-only configurations retain their original results.
+## Steps 18–19 implementation and verification log
 
-All user SQL and reference HTTP processes stay in the worker pipeline. The host
-retains Docker and fixed trusted bootstrap/clone declarations. Analysis uses only
-accepted inputs and retained observations. Completion, verdict, coverage and cleanup
-remain separate. Missing catalog, session, commit, phase or app evidence never passes.
-No dependencies were added; the locked environment remains in place.
+Earlier pending statements below are chronological history, superseded by the
+current checkpoint and final verification table.
 
-## Steps 6–8 reverified before this work
+**Steps 18–19 work in progress:** Steps 15–17 recheck passed 36 focused cases in
+40.60s, including real onboarding and report faults. Independent installed-package
+recheck is running. Added a fixed seven-case evaluation catalog, pure expectation
+comparison and real end-to-end tests; not yet verified. The full code audit found
+manifest special-file reads, nested deadline ownership and saved diagnostic gaps;
+focused fixes are in progress. Release/pilot materials are prepared, with
+external feedback explicitly pending. No outside participants or messages invented.
 
-Docker was initially stopped; the first integration attempt could not connect.
-Docker Desktop was started, then all **291 existing cases passed in 192.06s**,
-including **58 real PostgreSQL cases**. Lint, formatting and strict types passed.
-Evidence: `.pg-rehearse/step6-8-recheck.xml`.
+Added `scripts/evaluate.py` and `make evaluate`: the fixed labeled matrix uses the
+real pipeline, retains per-case evidence and incrementally writes private summary
+JSON/Markdown with mismatches/false-pass/false-failure counts. Existing output is
+never overwritten. Unsupported input must have no result or run allocation. The
+runner and all code-audit fixes still await verification.
 
-Existing rename/control behavior remains: committed rename breaks unchanged old
-SQL with 42703 while candidate reads Ada; ordinary index control passes. Owned
-private Docker resources, readiness/deadlines, scoped roles, copied input snapshots,
-atomic fixtures, rollback-only probes, deterministic digests, final cleanup/reporting
-and crash recovery remain covered by the full suite.
+Steps 15–17 installed wheel/sdist recheck passed all real rename/control/report/
+clean commands. The expanded initial unit suite passed **340 cases in 3.09s**;
+lint, formatting and strict typing pass. Audit fixes cover bounded manifest reads,
+UTF-8 paths, deadline ownership, first interruption during teardown, surviving index
+facts and incomplete saved diagnostics. Added real full-rehearsal interruption,
+JSON-report failure and confirmed-failure/cleanup precedence checks; still unrun.
 
-## Step 9: declared rollout, persistent sessions, committed writes and rollback
+CI now runs the labeled matrix and retains only its known synthetic summaries and
+reports. Added the fault-audit map and explicit CHECK receipt boundary: definitions
+are retained, identity/validation state are verified, while predicate equivalence
+is not independently proven. The trusted worker runs accepted SQL; a fragile text
+comparison was deliberately avoided. Final real checks and build remain pending.
 
-- Optional rollout declarations require a candidate contract and bounded, ordered
-  mixed_versions, candidate_only and app_rollback phases. Actor IDs, operation IDs,
-  supported SQL, required actions and write/read ordering are checked before Docker.
-- One to four old workload connections open and pass baseline probes before DDL.
-  They stay alive without an idle transaction across migration commit. Persistent
-  post-probes retain the same backend PIDs; fresh old probes use another connection.
-- The mixed sequence commits an old write, checks a candidate read, commits a new
-  write and checks an old read. Assertions must pass before write commit. A failed
-  write assertion rolls back and skips dependent reads. A committed write survives
-  a later failing read; real follow-up queries verified both behaviors.
-- Old SQL connections close before candidate-only actions, which see the committed
-  mixed data. Application rollback uses another immutable-baseline clone, forward
-  migration, committed candidate write and deployed read of that data. It does not
-  reset to S0 or silently perform a database down-migration.
-- Phase records retain check IDs, completion and actual baseline/migration/commit
-  barriers. The receipt validator rejects replaced persistent sessions, fake commit
-  flags, inconsistent phase claims and invented coverage. Missing required execution
-  evidence remains inconclusive, even when other branches passed.
-- Existing SQL-only configurations retain their original flow and do not claim
-  rollout/application coverage. No app-first, generic workflow or rollback engine
-  was introduced.
+Wheel and sdist built successfully with the locked backend. Created `RUNNING.md`
+after that build, covering setup, real demo/control, custom input files, validation,
+report interpretation, recovery, exits and verification. Added the step-by-step
+code audit, release checklist/changelog and truthful blank external-pilot record.
+New real focused checks are running; final source tests/build/install verification
+will follow before recording acceptance. No runtime dependency was added.
 
-## Step 10: real old/new reference application probes
+The first real seven-case matrix run passed six and rejected the lock-deadline
+label's incorrect assumption that an observed SQL timeout must mean partial/missing
+coverage. Actual evidence had complete observation attempts and cleanup, with an
+inconclusive verdict and 55P03. Corrected the expected completion/coverage, preserving
+their independence. Evidence: `.pg-rehearse/step18-19-focused.xml` (failed attempt).
+No product timeout outcome was changed to satisfy the label.
 
-- Added independently runnable deployed/candidate orders entry points and a small
-  real HTTP application using Psycopg and the standard library. Fixed revision-specific
-  queries, request validation, domain status validation, serialization, prepared
-  connection reuse and POST commit happen inside actual application processes.
-- The built-in adapter launches separate services inside the owned immutable worker
-  image, with loopback HTTP, nonroot/read-only restrictions and the existing resource
-  budget. Child stdin receives only workload credentials; no Docker socket, host
-  hooks, setup/migration secrets or passwords in argv/environment are supplied.
-- The old service/pool remains alive across DDL. Fresh old and candidate processes
-  start after commit. Real HTTP probes check user values, both committed order
-  write/read directions, candidate-only state and rollback after candidate POST.
-- Results retain source revision digest, actor, process/backend identities, HTTP
-  status, process exit status when available, SQLSTATE and semantic assertions.
-  Readiness alone is not coverage; altered revisions, missing assertions and
-  malformed output cannot pass. SQL-only and reference_application evidence levels
-  remain explicit beside required/completed coverage.
-- Application requests use application_ms (default 5000), readiness is bounded to
-  five seconds, and the entire pipeline retains worker_seconds. Child groups stop
-  on normal completion/errors; owned worker/container teardown handles forced exits.
-- The compatible HTTP fixture passes all 13 probes. The rename reproduces old HTTP
-  42703 while the candidate succeeds. The new-status fixture passes every SQL check
-  but old HTTP domain parsing rejects committed processing data with 422, including
-  application rollback. These are real application outcomes, not SQL replay badges.
-- Real injected process SIGKILL (-9), malformed HTTP output and delayed HTTP requests
-  produce distinct infrastructure/inconclusive evidence, with successful cleanup.
-- Fixed adapter declarations reject missing reference columns, reserved order ID
-  fixture collisions and invalid ID values before allocation. Arbitrary app images,
-  a production web stack and concurrent pool certification remain outside this scope.
+The corrected **16-case real focused suite passed in 55.75s**, including all seven
+labels, actual teardown signals, all three report writers and confirmed failure
+with failed cleanup. The locked wheel/sdist build passed; resources include the
+evaluation module, execution guide, changelog, release/pilot/audit docs and runner.
+The seven-case evaluation command and frozen-source 444-case full regression are
+next. External pilot acceptance and remote CI remain pending.
 
-## Step 11: complete bounded index/CHECK execution evidence
+The standalone evaluation command completed with **7/7 matched**, zero false
+passes/failures in the fixed matrix, all six actual rehearsals cleaned, and the
+unsupported case rejected before run allocation. Evidence:
+`.pg-rehearse/step18-evaluation/{summary.json,summary.md}`. The full frozen 444-case
+regression is running. Final read-only harness/CI/guide review found no blocking
+logic issue; corrected the documented Mac environment fallback to persist for
+later commands. This prose change does not alter the running tests.
 
-- Each migration captures public columns, index definitions/columns/sort flags/
-  validity/readiness and CHECK definitions/validation state before and after execution.
-  Failed steps attempt a final snapshot. Pure analysis verifies final declared effects,
-  including an index and column rename in one transaction. Missing/wrong catalog
-  observations are missing coverage, never a passing check.
-- Added DROP INDEX for one explicitly created index, with optional public qualification,
-  RESTRICT semantics and ordinary/concurrent modes. Concurrent create/drop retain
-  the single-autocommit-statement restriction. Unique, expression, partial, covering,
-  non-B-tree, constraint-owned and arbitrary-schema indexes remain unsupported.
-- Named CHECK add/NOT VALID/VALIDATE/drop/re-add execute with original transaction
-  declarations. Tests verify validation state and definitions, successful replacement,
-  validation failure on existing zero-value rows and old-write rejection with 23514.
-- A real blocked concurrent non-unique index build retained an invalid pg_index entry;
-  its facts and INVALID_INDEX_REMAINS finding survive the failure. Timeout remains
-  inconclusive; the branch is disposed without automatically retrying dirty state.
-- Reports include SQL/application findings, actor/phase evidence and catalog snapshots.
-  Old-version SQL failures in persistent/fresh/mixed phases use deployed finding IDs.
+The user confirmed on 2026-10-16: no external feedback is available; leave the pilot
+pending. Step 19 therefore records completed release/pilot preparation and pending
+independent acceptance. Updated CI/test documentation to match the evaluation and
+new interruption/failure checks. No messages or invitations were sent.
+
+**Steps 1–17 are implemented.** Local verification passed all **91 real PostgreSQL
+cases** and a fresh **312-case unit suite**, plus real wheel/sdist installation
+checks outside the checkout. Lint, formatting, strict typing and the offline lock
+check pass. All 13 example configurations pass preflight. The tested worker image is
+`sha256:9ecc6c9ba5c3fa2e0991abd180ebc43c391267296fac2fe53f4a7874a33433ca`.
+Final Docker inventory: **zero managed containers and zero managed networks**.
+
+Step 15 adds private escaped static HTML. Step 16 adds init/demo/report/clean using
+the existing real pipeline and ownership guards. Step 17 adds pinned, read-only CI,
+retained synthetic reports and reproducible installed-distribution checks. The
+lock contains 45 packages: runtime dependencies are unchanged; Hatchling and its
+build-only dependency chain are now pinned in the development environment.
+
+GitHub-hosted CI/Python matrix execution and browser visual QA are unverified.
+Steps 18–19 remain pending. The detailed earlier checkpoint and chronological
+implementation log below are retained as history; the final verification table
+at the end records the current state.
+
+## Previous Steps 12–14 checkpoint
+
+Existing Steps 9–11
+and earlier behavior passed a pre-change **334-case regression in 460.77s**, including
+75 real PostgreSQL cases. The final source has optional controlled contention,
+sequential advisory benchmarks and isolated query-plan diagnostics. No dependency
+was added; the locked environment still resolves 42 packages.
+
+The complete **372-case suite (284 unit + 88 real PostgreSQL)** passed in **540.80s**.
+After the final actor-barrier receipt tightening, all **13 real observation cases
+passed in 172.63s** against the rebuilt final worker, and all **284 unit cases passed
+in 4.83s**. Lint, formatting, strict typing and the offline lock check pass. All 13
+example configurations passed complete preflight.
+
+The host retains Docker and fixed bootstrap/clone administration; all application
+SQL and observation collection run inside scoped workers. Analysis uses accepted
+inputs and retained receipts only. Completion, verdict, required coverage and cleanup
+remain separate. Missing required observations cannot pass. Optional performance
+quality and plan availability are explicit fields; advisory warnings and informational
+plan changes do not invalidate complete compatibility evidence.
+
+## Steps 9–11 reverified
+
+The pre-change suite passed all 334 cases, including persistent/fresh SQL and HTTP
+sessions, committed cross-version writes, independent application rollback, real
+application domain failure despite passing SQL, receipt tampering, index validity,
+failed concurrent builds, CHECK validation/drop/re-add and existing lifecycle faults.
+Docker was initially stopped; that first attempt failed before integration setup.
+Docker Desktop was started before the passing recheck.
+
+Evidence: `.pg-rehearse/step9-11-recheck.xml`.
+
+Existing rename/control behavior remains part of the full suite: committed rename
+breaks deployed SQL with 42703 while the candidate sees preserved data; additive
+index control passes. Immutable seed digests, independent clones, rollback-only
+contracts, semantic assertions, worker permissions, signals/recovery, ownership
+refusal, post-cleanup reports and separate failure/coverage/cleanup fields remain
+covered. Earlier Step 6–8 and Step 9–11 receipts remain under `.pg-rehearse/`.
+
+## Step 12: controlled contention and lock observation
+
+- Optional declarations preflight bounded UPDATE blocker/probe SQL and require
+  poll_ms <= observe_ms < lock_ms. Existing migration SQL is reused on a fresh clone.
+- A scoped writer holds a real transaction after a successful UPDATE. The migrator
+  starts afterward; a separate read-only observer records activity, wait events,
+  pg_blocking_pids, lock types/modes/grants and wait-start values for known actors.
+- Only an observed migration wait starts the declared application probe. The probe
+  may be observed waiting behind the migration. Release follows an observed barrier
+  or bounded fallback. An explicit timeout variant holds through the migration's
+  server deadline and retains 55P03/inconclusive evidence.
+- The blocker rolls back on exit, including observer and SQL failures. Connections
+  close before owned worker teardown. Server statement/lock deadlines apply to SQL
+  actor threads; the main worker and host enforce the total wall budget.
+- Receipts retain actor PIDs, UTC snapshots, monotonic events, actual hold duration,
+  observer overhead, missed polls and at most 1000 samples. Pure validation checks
+  identities/barriers and derives required wait/release coverage from actual facts.
+- Observed snapshots without a conflicting wait differ from unavailable observations;
+  neither can satisfy this expected-wait scenario. No lock-free or production-outage
+  claim is inferred from missing samples. The passing release case treats an observed
+  controlled wait as informational; failed deadlines remain visible.
+
+## Step 13: repeatable advisory performance
+
+- Optional operation IDs select the same deployed SQL, bound parameters and semantic
+  expectations for all arms. The fixed schedule is hashed and retained.
+- Each of up to five trials creates four fresh verified clones: baseline, migrated
+  candidate, and unchanged A/A controls. Trial order alternates and all arms execute
+  sequentially. Statistics preparation is consistent. Defaults: 50 warmups and 200
+  measured attempts per selected operation, one connection and concurrency 1.
+- Writes commit in both warmup and measurement schedules. Fresh clones reset state
+  between arms/trials. Repeated primary keys and failed assertions/errors stay in
+  the attempted schedule; failed requests are not silently replaced or filtered.
+- Finished benchmark databases are released early by fixed host SQL to keep the
+  bounded tmpfs from accumulating twenty copies. Exact run/owner/template/branch
+  marker and administrator ownership are required; a changed marker is refused.
+  Worker roles remain unable to create/drop databases.
+- Raw warmups and attempted samples retain monotonic durations, SQLSTATE/error kinds,
+  counts, timeout/error rates, median, p95, MAD, extrema and successful throughput over
+  attempted client time. Successful latency excludes errors; timeout attempts remain.
+- The advisory-v1 heuristic needs five pairs, >=200 successful measured samples per
+  arm/bucket/trial, successful warmups and consistent environment. Both absolute and
+  relative thresholds must recur in four of five pairs. Zero baselines and missing
+  or erroneous samples are insufficient. Bidirectional A/A drift and excessive trial
+  spread are noisy. No strict performance gate, improvement badge or confidence
+  interval is claimed.
+- Timings include the existing validation/assertion harness, binding, full bounded
+  consumption and commit. Reports preserve image IDs/digest, architecture, configured
+  Docker limits, seed, PostgreSQL settings, timer resolution and preparation policy.
+- A lost measurement connection retains its partial sample prefix and yields an
+  infrastructure outcome, rather than discarding observations or claiming completion.
+
+## Step 14: query-plan capture and comparison
+
+- Optional selected operations get independent baseline and migrated plan clones,
+  separate from compatibility, rollout and benchmark branches.
+- Default EXPLAIN FORMAT JSON does not execute SQL. Explicit analyze: true enables
+  ANALYZE/BUFFERS/TIMING OFF. Execution-capable write plans commit on their own clone;
+  commit state and consent are checked against accepted input.
+- Original JSON, including unknown fields and predicates, is retained only in private
+  mode-0600 worker receipts. Shared reports contain sanitized structural summaries
+  and references to those files. Limits: 256 KiB per plan, 2000 nodes, depth 64.
+- Version-1 normalization retains operators, relation/index identity, child order,
+  scan direction/options and parsed expression shapes with literal values removed.
+  Timing/cost/row/buffer/spill metrics stay outside the structural fingerprint.
+- Missing/failed/malformed plans remain explicitly unavailable. Plan differences are
+  informational; costs are not milliseconds and an index scan is not automatically
+  better. Fresh unprepared diagnostics do not certify a production pooled plan.
+- The deterministic 6002-order selectivity fixture demonstrates a natural before/after
+  index plan change without disabling sequential scans or changing planner costs.
 
 ## Verification actually performed
 
 | Check | Result |
 | --- | --- |
-| Pre-change Step 6–8 recheck | **291 passed in 192.06 seconds** |
-| Initial new real rollout/catalog cases | **12 passed in 115.43 seconds** |
-| Complete regression before final field/label corrections | **331 passed in 350.74 seconds** |
-| Final full regression | **334 passed in 340.10 seconds** |
-| Final unit suite | **259 passed in 4.41 seconds** |
-| Real PostgreSQL cases | 75: 13 lifecycle, 4 preflight, 14 worker, 14 baseline, 13 rehearsal, 17 rollout/apps/catalog |
-| Ruff lint / formatting / strict mypy | Passed; 64 source files type-checked |
-| Locked dependencies | Consistent offline, 42 packages; no new dependency |
-| Worker image | Rebuilt from final source; exercised by the full suite and final CLI demos |
-| Wheel and source distribution | Built successfully offline |
-| Real initial CLI runs | Rollout 0; HTTP application 0; tightened CHECK 1; cleanup complete |
-| Final managed Docker resource inventory | **Zero managed containers and zero managed networks** |
+| Pre-change full regression | **334 passed in 460.77s**, including 75 real PG cases |
+| Initial new observation cases | Seven passed; repeated-trial coverage collision found and fixed |
+| New real observation regression | **10 passed in 136.59s** |
+| Focused final index-drop, combined HTTP/observations, connection-loss cases | **3 passed in 39.38s** |
+| Final standalone unit suite | **284 passed in 4.83s** |
+| Complete regression | **372 passed in 540.80s**, including 88 real PostgreSQL cases |
+| Final-source observation regression | **13 passed in 172.63s**, including actor-barrier tampering |
+| Ruff lint / formatting / strict mypy | Passed; 66 source files type-checked |
+| Locked dependency check | Passed offline; 42 packages, no new dependency |
+| Example preflight | All 13 configurations passed |
+| Worker image | Final source rebuilt; all 13 observation cases and 284 unit cases passed after final receipt tightening |
+| Final public CLI demos | Contention 0, five-pair benchmark 0, query plans 0; cleanup complete |
+| Distribution build | Wheel and source distribution built offline; wheel includes all new modules |
+| Final managed Docker inventory | **Zero managed containers and zero managed networks** |
 
-The new real cases cover labeled SQL/HTTP rename/control/domain failures; persistent
-and fresh session identity; committed writes and dependent read behavior; independent
-rollback; strict receipt mutation rejection; missing required phases; NOT VALID and
-VALIDATE/drop/re-add; concurrent index remnants; same-step index+rename; app process
-crash, malformed HTTP and request timeout. Existing lifecycle, ownership, input,
-worker permission/secret and cleanup fault cases remain in the complete suite.
+The first new combined run exposed duplicate compatibility coverage labels for
+repeated benchmark arms. Advisory experiments now retain their own sample/plan
+status and every branch includes trial/arm identity. A later 370-case checkpoint
+stopped after 48 passes on a baseline-clone infrastructure error in the existing
+index-drop example, before migration. Its report remained inconclusive/infra and
+cleanup completed. The focused final-image index-drop case passed afterward. These
+failed attempts are not counted as complete passing regressions. The clean 372-case
+suite passed with image building finished. The subsequent final receipt tightening
+was verified by the complete thirteen-case observation regression and unit suite.
 
-Local evidence:
-- `.pg-rehearse/step6-8-recheck.xml`: verification before pipeline edits.
-- `.pg-rehearse/step9-11-new.xml`: first twelve new real cases.
-- `.pg-rehearse/step9-11-test-results.xml`: complete regression result.
-- `.pg-rehearse/runs/0f7ef97777b84003a632f1a77ef7bbb9/`: initial passing SQL rollout.
-- `.pg-rehearse/runs/af2bb90c3d23440ab7f5b77c43a456d0/`: final passing HTTP application report.
-- `.pg-rehearse/runs/13082a16e94f4dddbb98c608da8af9d4/`: final application domain/rollback failure with passing SQL.
-- `.pg-rehearse/runs/8a2f8e8486e04a428848d3822ab95d55/`: initial CHECK old-write failure.
+Evidence:
+- `.pg-rehearse/step9-11-recheck.xml`: existing behavior before implementation.
+- `.pg-rehearse/step12-14-initial.xml`: first run and discovered coverage collision.
+- `.pg-rehearse/step12-14-new.xml`: ten passing real new cases.
+- `.pg-rehearse/step12-14-final-faults.xml`: three passing final targeted cases.
+- `.pg-rehearse/step12-14-test-results.xml`: complete 372-case regression.
+- `.pg-rehearse/step12-14-final-observations.xml`: final-source thirteen-case real regression.
+- `.pg-rehearse/step12-14-final-unit.xml`: final-source 284 unit cases.
+- `.pg-rehearse/runs/4d47059c8eb24aa785892d8700bcce68/`: final passing contention CLI report.
+- `.pg-rehearse/runs/9797c2b13cac4443b955037cf5fee93a/`: final advisory CLI benchmark, 20 arms and 5000 retained warmup/measured samples; no regression observed by the declared heuristic.
+- `.pg-rehearse/runs/52ef2c13dd444e5188cae005aad1eed1/`: final passing plan CLI report; Sort/Seq Scan became Sort/Index Scan naturally.
 
-Verified locally on Docker Desktop 29.7.2, Linux arm64 PG17, host Python 3.14.6 and
-worker Python 3.14.8. Official PG image digest:
+Local environment: Docker Desktop 29.7.2, Linux arm64 PostgreSQL 17, host Python
+3.14.6, worker Python 3.14.8. Official image:
 `postgres@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3`.
-Final exercised worker image:
-`sha256:aba3e74a6afb4eee411bff4d79970151d773227029dcad88c315bdc2cfe3446a`.
-GitHub CI is configured for the complete suite on Python 3.12/3.14 but has not run
-in this chat. The supplied architecture PDF is unchanged.
+Final worker content ID:
+`sha256:79d2df36cfd49c4d2ad2458926dbab2dd7538fe994aad203dac98b8b8bb1d60b`.
+GitHub CI is configured for Python 3.12/3.14 but has not run in this chat.
 
 ## Code inventory
 
-| Item | Current amount |
-| --- | ---: |
-| Modules with working behavior | 37 |
-| Version/module entry-point files | 2 |
-| Package namespace files | 11 |
-| Planned feature modules | 14 |
-| Total Python source files | 64 |
-| Physical working-module lines | 5613 |
-| Physical source lines including placeholders | 5702 |
-| Unit files / cases | 12 / 259 |
-| Physical unit-test lines | 1732 |
-| Integration files / cases | 7 / 75 |
-| Physical integration-test lines | 1958 |
+There are 66 source files: 52 working modules, two version/module entry points,
+eleven namespace files and one remaining placeholder (`evaluation/cases.py`). Unit tests occupy fifteen
+files (312 cases); integration tests occupy nine (91 cases). Two independently
+runnable reference HTTP application entry points remain outside src. See
+PROJECT_LAYOUT.md and docs/observations.md for responsibilities and supported input.
 
-Two independently runnable example application entry points are outside src.
-Physical lines include comments, docstrings and blank lines. PROJECT_LAYOUT.md
-lists implemented responsibilities and remaining placeholders.
+## Boundaries and next task
 
-## Remaining boundaries and next task
+**Step 18: labeled evaluation and failure-path audit** is next. Requested local
+implementation and verification for Steps 12–17 is complete. Step 17's workflow is
+configured and its commands verified locally; no remote CI execution is claimed.
+Steps 18–19 (broader evaluation and external pilot) remain pending; no external
+feedback is invented.
 
-**Step 12: controlled contention and lock observation.** Add reproducible blockers,
-separate observation and explicit lock coverage without claiming observed absence
-from missing samples. The new index timeout test is a test-only failure injection,
-not product lock certification. Performance, plans, HTML, onboarding and release
-milestones remain later work.
+The implemented rollout remains schema-first. Application rollback keeps S1 and
+candidate-written data; app-first and database down-migrations are unsupported.
+Reference HTTP probes are maintained demos, not production release certification.
 
-The implemented rollout is explicitly schema-first with a bounded declared sequence.
-Application rollback keeps S1 and committed candidate data; database down-migrations
-and app-first deployment are unsupported. Reference HTTP apps are maintained demos,
-not evidence for a user's production application or release provenance. The compatible
-fixture has both user-name columns and does not implement general dual writes.
+Contention is a deliberate bounded actor scenario, not arbitrary traffic replay.
+Performance is advisory, sequential, synthetic and closed-loop. Static parameter
+schedules must be appropriate for repeated committed writes. Plan diagnostics use
+fresh unprepared connections; unknown raw facts remain private. These measurements
+do not establish production capacity, outage duration or equivalence.
 
-There are no claimed in-migration requests; old processes/sessions remain alive
-across a committed barrier and before/after behavior is observed. Each reference
-service uses one prepared connection and shares the worker's memory/CPU budget.
-DML RETURNING still buffers in libpq, and sequence advancement persists between
-operations within a branch. Explicit assertions and current resource/result limits
-remain the supported envelope.
+DML RETURNING still buffers in libpq. Receipts keep the 8 MiB cap. An entire worker
+crash before receipt finalization loses that task's unfinished observations; earlier
+receipts and missing coverage remain. Filesystem loss can prevent reports. Recovery
+updates the manifest; existing reports retain the original cleanup attempt. The
+provided architecture PDF is unchanged.
 
-Receipts retain the 8 MiB cap; large catalog histories can exceed it. A process killed
-before task receipt finalization loses that task's unfinished observations; earlier
-receipts and missing coverage remain. Filesystem loss may prevent reports. Recovery
-updates the manifest; existing reports continue to describe the original cleanup
-attempt. No failure or missing observation is silently converted into a pass.
+## Steps 15–17 chronological implementation log
+
+These notes preserve intermediate states and failed attempts; later entries
+supersede earlier pending-check statements.
+
+Pre-change verification passed **297 tests in 191.55s**: all 284 unit cases and
+13 real PostgreSQL observation cases. Evidence: `.pg-rehearse/step12-14-recheck.xml`.
+Implemented a self-contained escaped HTML renderer/template and post-cleanup HTML
+output, plus bounded saved-result reading. Failed report writes now retry all
+formats with the updated infrastructure outcome and try to remove stale files.
+New checks, onboarding commands, distribution installation and CI updates are pending.
+
+Added packaged minimal starter assets and init/demo/report/clean commands. Init
+refuses any existing target directory and creates files exclusively; demo uses
+bundled inputs and the real pipeline; saved reports preserve the original exit
+code without Docker; clean selects one validated run and delegates ownership/active
+checks to recovery. The worker/SQL experiment flow is unchanged. Verification and
+CI/package installation work remain pending.
+
+Added installed-distribution verification: export hash-locked runtime dependencies,
+rebuild the sdist outside the checkout, compare wheel bytes, install both into fresh
+environments and execute real rename/control/report/clean commands while retaining
+reports. CI now pins Action commits, uses read-only permissions, asserts expected
+failure exit 1, and uploads only explicit report/build/test artifacts with always().
+Pinned the existing Hatchling backend (1.32.4) and locked its build-only dependency
+chain; runtime dependencies are unchanged. The lock now contains 45 packages. CI
+execution, local distribution smoke checks and all new feature tests are pending.
+
+Initial new unit checks passed: **27 cases**, including hostile HTML, bounded report
+reads, source preservation, starter parity and refusal to overwrite files. Lint,
+formatting and strict typing passed. Added real onboarding/demo/clean tests, HTML
+failure fallback coverage and CI artifact/permission checks; these are not yet run.
+
+The expanded **312-case unit suite passed in 4.77s**, including the CI checks.
+Ruff formatting/lint and strict mypy (66 source files) passed. Wheel and sdist build
+with the pinned backend succeeded offline. Real new integration and independent
+installed-distribution checks remain pending.
+
+Real onboarding cases passed: fresh init/validate/control, actual demo SQLSTATE
+42703/candidate Ada data, saved HTML and idempotent clean with reports retained;
+active clean refusal and unrelated network preservation. The first HTML-failure
+test assertion incorrectly expected an unescaped Markdown rule ID; saved JSON
+already showed infrastructure_error/inconclusive with complete cleanup. Corrected
+the assertion to check the readable explanation and outcome. Added onboarding/CI
+documentation and updated module layout. A browser preview could not be obtained:
+loopback timed out and the browser rejects local file URLs. Static HTML structural,
+escaping and accessibility-markup checks passed; visual QA is unverified.
+
+Both real report-failure cases now pass (**2 cases in 11.02s**), with all surviving
+formats updated to infrastructure_error and no stale failed-format file. Full
+403-case regression is running against the rebuilt worker. CI now places pytest
+temporary evidence under an explicit retained root and allowlists only report
+files there, preserving failed-test reports even before package checks execute.
+
+All **91 real PostgreSQL cases passed** in the full-suite attempt. That process
+then failed its first unit case: CI artifact rules were updated after collection,
+so the already-loaded old assertion expected the earlier allowlist. This was a
+verification-process error, not a product or database failure. A fresh 312-case unit
+run and installed wheel/sdist checks are now running. The interrupted full attempt
+is retained as `.pg-rehearse/step15-17-test-results.xml`; it is not claimed as a
+complete passing suite.
+
+## Steps 15–17 completed behavior
+
+- HTML is rendered from the same final post-cleanup RunResult as JSON/Markdown.
+  Every data value is escaped; the bundled template embeds static CSS only, a
+  restrictive CSP, keyboard focus/skip navigation, table captions, native details
+  and print styles. Findings lead, followed by coverage, phases, SQL/HTTP probes,
+  migrations, controlled waits, advisory measurements, sanitized plans and
+  environment/clone identities. No raw plan trees or credential sources are read.
+- Report-write failures update the infrastructure outcome and retry every format;
+  an unavailable format is removed when possible so it cannot retain a stale pass.
+  Mode-0600 atomic writers and private run directories remain in use.
+- Init creates one new directory exclusively from nine bundled starter files,
+  validates both configurations and refuses all existing destinations. Demo runs
+  the actual rename pipeline and preserves expected exit 1/SQLSTATE 42703 with
+  candidate Ada data. Accepted snapshots/reports outlive the temporary starter.
+- Report validates a bounded regular JSON file without Docker, renders terminal,
+  HTML or Markdown, protects the source JSON and retains the stored exit code.
+  Clean validates a single run ID, refuses symlinks and active runs, delegates
+  ownership checks to existing recovery and retains all evidence files.
+- CI pins Action commits, uses read-only permissions and does not persist checkout
+  credentials. It builds the matching worker, runs real tests on Python 3.12/3.14,
+  builds distributions with the locked backend and verifies both outside source.
+  Expected rename exit 1 and control exit 0 are asserted. An always-run artifact
+  step allowlists only known synthetic reports, test/build artifacts and a package
+  log; manifests, snapshots, raw plans and worker receipts are excluded.
+- Package verification rebuilds the sdist outside the checkout, requires identical
+  wheel bytes, installs both into independent environments with hash-locked runtime
+  dependencies, verifies isolated import paths, and executes real init/validate/
+  rename/control/report/clean commands. All four real rehearsals completed cleanup.
+
+## Final Steps 15–17 verification actually performed
+
+| Check | Result |
+| --- | --- |
+| Steps 12–14 pre-change recheck | **297 passed in 191.55s**: 284 unit + 13 real observation cases |
+| Final real PostgreSQL regression | **91 passed** in the full-suite attempt; no database test failed |
+| Fresh final unit regression | **312 passed in 3.91s**, including updated CI artifact rules |
+| Report failure fallback | **2 real cases passed in 11.02s**, also passed in the final PostgreSQL regression |
+| Lint / formatting / strict mypy | Passed; 120 Python files formatted, 66 source files type-checked |
+| Locked environment | Offline lock check passed, 45 packages; runtime requirements unchanged |
+| Example validation | All 13 configurations passed complete preflight |
+| Wheel/sdist resources | HTML template and all nine starter files included |
+| Installed distributions | Byte-identical sdist rebuild; both fresh external installs passed real rename 1/control 0, HTML rendering and clean |
+| Final managed Docker inventory | **Zero containers and zero networks** |
+| GitHub-hosted CI / remote Python matrix | Configured, not executed in this chat |
+| Browser visual QA | Unverified: loopback timed out and browser policy rejected file URLs; static HTML safety/markup checks passed |
+
+The 403 current cases were verified in two groups: 91 real PostgreSQL cases in
+the full attempt, then all 312 unit cases in a fresh process. The full attempt
+exited nonzero because its old, collected CI assertion encountered an updated
+artifact allowlist; it is not represented as a single passing 403-case invocation.
+No product code changed between the passing database cases and fresh unit run.
+
+Current evidence:
+- `.pg-rehearse/step12-14-recheck.xml`: pre-change re-verification.
+- `.pg-rehearse/step15-17-test-results.xml`: 91 passing PostgreSQL cases and the stale CI assertion failure.
+- `.pg-rehearse/step15-17-final-unit.xml`: 312 passing final unit cases.
+- `.pg-rehearse/step15-17-report-faults.xml`: passing real report-write failures.
+- `.pg-rehearse/package-check/summary.md`: both installed distributions and four actual rehearsal outcomes.
+- `.pg-rehearse/package-check/packaging.log`: isolated builds/imports/CLI commands.
+- `.pg-rehearse/package-check/{wheel,sdist}/{rehearsal,control}/<run-id>/`: retained final JSON/Markdown/HTML.
+
+This CI is a synthetic tool self-test, not a trusted production policy or Git-ref
+baseline gate. Performance remains advisory. Reports intentionally contain SQL
+and fixture values and require private handling for sensitive inputs. The provided
+architecture PDF is unchanged. No external pilot or release publication occurred.
+
+## Final Steps 18–19 verification and handoff
+
+| Check | Actual result |
+| --- | --- |
+| Steps 15–17 recheck | 36 focused cases passed in 40.60s; both installed distributions passed four actual rename/control runs |
+| Initial expanded unit suite | 340 passed in 3.09s |
+| New focused real checks | 16 passed in 55.75s: seven labels, report faults, cleanup precedence and actual signals |
+| Final complete regression | **444 passed in 418.72s, zero errors/failures/skips** |
+| Standalone evaluation | **7/7 matched; zero false passes/failures** in the fixed matrix; six real rehearsals cleaned, unsupported input unallocated |
+| Final Ruff lint / formatting / mypy | Passed; 131 Python files formatted, 66 source files checked |
+| Lock and dependencies | Offline check passed; 45 packages, no new runtime dependency |
+| Example preflight | 14 accepted; the one intentional unsupported configuration rejected before allocation |
+| Final build/install | Wheel/sdist built; identical sdist wheel rebuild; both external fresh installs passed real rename 1/control 0, saved HTML and clean |
+| Package contents | Evaluation module, HTML/starter assets, runner, RUNNING.md and audit/release/pilot/changelog resources present |
+| Final managed Docker inventory | **Zero containers and zero networks** |
+| External pilot | **Pending at the user's request; zero outside sessions/feedback** |
+| Remote CI and browser visual QA | Unverified; no remote success or visual acceptance claimed |
+
+Audited and repaired bounded manifest loading, malformed UTF-8 paths, nested deadline
+ownership, first interruption during teardown, surviving index catalog integrity,
+and incomplete saved terminal diagnostics. Removed the repeated WorkerTask whitelist
+and merged duplicate index expectation bookkeeping. The remaining lifecycle and
+evidence loops have distinct safety responsibilities and were retained. No broad
+refactor or dependency addition was needed. See `docs/audit.md` for the reviewed
+step/module map and explicit CHECK predicate-equivalence boundary.
+
+Final evidence:
+- `.pg-rehearse/step15-17-recheck.xml` and `.pg-rehearse/step15-17-package-recheck/`.
+- `.pg-rehearse/step18-19-unit-initial.xml`: 340 passing unit checks.
+- `.pg-rehearse/step18-19-focused.xml`: retained incorrect-label attempt, not counted as passing.
+- `.pg-rehearse/step18-19-focused-final.xml`: 16 passing focused cases.
+- `.pg-rehearse/step18-19-test-results.xml`: complete passing 444-case run.
+- `.pg-rehearse/step18-evaluation/{summary.json,summary.md}` and per-case reports.
+- `.pg-rehearse/step18-19-package-check/{summary.md,packaging.log}` and four installed-run report sets.
+- `.pg-rehearse/step18-19-build.json`: final source/wheel/lock hashes and tested image identity.
+
+The tested executable worker image is
+`sha256:9aded118260932e27e96ad209ff6e3170080d36925eb1086a4095336bf031480`.
+The final installed/tested wheel SHA256 is
+`c8806248be82f8aa24d57045349ddc50d9c995758eac30266ebd78aef758ec1e`.
+Documentation-only rebuilds must preserve those wheel bytes; source-archive hashes
+are recorded separately after the final progress update. The working tree remains
+uncommitted; this is verified source preparation, not an assigned release commit.
+
+Use `RUNNING.md` for execution. Next external actions are the recorded independent
+pilot protocol and actual remote CI/browser checks, followed by the release gate
+in `docs/release.md`. The user explicitly requested leaving the pilot pending.
+No participant messages, release tags, publication or simulated feedback occurred.

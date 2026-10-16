@@ -1,0 +1,20 @@
+schema_version: 1
+name: orders-index-benchmark
+postgres_image: postgres:17
+schema_path: schema/base.sql
+fixtures_path: fixtures/orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-v1.yml
+migrations:
+- id: add-order-user-index
+  path: migrations/create_order_user_index.sql
+  transaction: transaction
+benchmark:
+  operations:
+  - list-orders
+  trials: 5
+  warmups: 50
+  samples: 200
+timeouts:
+  worker_seconds: 900

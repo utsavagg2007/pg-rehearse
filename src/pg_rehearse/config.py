@@ -256,6 +256,26 @@ def preflight_config(
     candidate = contract(spec.contracts.candidate) if spec.contracts.candidate else None
     if candidate and candidate.version == deployed.version:
         raise ConfigurationError("Deployed and candidate contract versions must differ")
+    for label, selected in (("benchmark", spec.benchmark), ("plans", spec.plans)):
+        if selected and (
+            len(set(selected.operations)) != len(selected.operations)
+            or not set(selected.operations) <= {op.id for op in deployed.operations}
+        ):
+            raise ConfigurationError(f"{label}: select unique deployed operation IDs")
+    if spec.contention:
+        for actor, operation in (
+            ("blocker", spec.contention.blocker),
+            ("probe", spec.contention.probe),
+        ):
+            source = f"{path} (contention {actor})"
+            parsed = parse_document(
+                bound_sql_for_parse(operation.sql, operation.parameters, source), source
+            )
+            validate_contract(parsed)
+            if actor == "blocker" and parsed.statements[0].kind != "UpdateStmt":
+                raise ConfigurationError("Contention blocker must be an UPDATE")
+            if not operation.required:
+                raise ConfigurationError("Contention operations must be required")
     if spec.applications:
         required_columns = {
             "users": {"id", "name"},

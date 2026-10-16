@@ -1,0 +1,10 @@
+schema_version: 1
+name: orders-unsupported-add-column
+schema_path: schema/base.sql
+fixtures_path: fixtures/orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-v1.yml
+migrations:
+  - id: unsupported-add-column
+    path: unsupported/add_order_note.sql

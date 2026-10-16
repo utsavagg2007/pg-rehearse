@@ -1,3 +1,5 @@
+import signal
+import time
 from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -8,14 +10,59 @@ from uuid import UUID
 import pytest
 
 from pg_rehearse.config import load_config, load_worker_config
-from pg_rehearse.errors import UnsupportedInputError
+from pg_rehearse.errors import UnsupportedInputError, WorkerDeadline
 from pg_rehearse.fixtures.validate import validate_fixtures
 from pg_rehearse.migration.classify import baseline_catalog
 from pg_rehearse.migration.preflight import parse_document
-from pg_rehearse.models import FixtureSpec, SemanticAssertions
+from pg_rehearse.models import FixtureSpec, OperationSpec, SemanticAssertions
 from pg_rehearse.orchestrator import worker_inputs
 from pg_rehearse.workload.assertions import compare_results, normalize, summarize
-from pg_rehearse.workload.runner import ResultLimitError, collect_rows
+from pg_rehearse.workload.runner import (
+    ResultLimitError,
+    collect_rows,
+    execution_deadline,
+    run_operation,
+)
+
+
+@pytest.mark.parametrize("rollback_delay", [0, 0.1])
+def test_operation_cannot_consume_enclosing_worker_deadline(rollback_delay: float) -> None:
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.execute.side_effect = lambda *args: time.sleep(1)
+    connection.transaction.return_value.__exit__.side_effect = lambda *args: time.sleep(
+        rollback_delay
+    )
+    operation = OperationSpec(id="query", sql="SELECT 1", expect={"row_count": 1})
+    with pytest.raises(WorkerDeadline):
+        with execution_deadline(0.05):
+            run_operation(
+                connection,
+                operation,
+                version="test",
+                phase="baseline",
+                statement_ms=10 if rollback_delay else 1000,
+            )
+    assert signal.getitimer(signal.ITIMER_REAL)[0] == 0
+
+
+def test_shorter_operation_deadline_preserves_remaining_worker_budget() -> None:
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.execute.side_effect = lambda *args: time.sleep(1)
+    operation = OperationSpec(id="query", sql="SELECT 1", expect={"row_count": 1})
+    with pytest.raises(WorkerDeadline):
+        with execution_deadline(0.1):
+            result = run_operation(
+                connection,
+                operation,
+                version="test",
+                phase="baseline",
+                statement_ms=10,
+            )
+            assert not result.success and result.error_kind == "operation_deadline"
+            time.sleep(1)
+    assert signal.getitimer(signal.ITIMER_REAL)[0] == 0
 
 
 @pytest.mark.parametrize(

@@ -15,7 +15,7 @@ cleans up using matched ownership labels. `recover` can finish an inactive run.
 `run` uses scoped workers to seed a verified template and execute fresh baseline,
 deployed and candidate branches. It commits migrations before application probes,
 then derives compatibility findings and coverage from recorded evidence. Final
-terminal/JSON/Markdown reports follow cleanup. Preflight and copied snapshots gate
+terminal/JSON/Markdown/HTML reports follow cleanup. Preflight and copied snapshots gate
 allocation and are rechecked inside workers. See [worker.md](worker.md),
 [baseline.md](baseline.md) and [rehearsal.md](rehearsal.md).
 
@@ -51,8 +51,9 @@ explicit schema-first phases, persistent/fresh sessions, committed mixed writes,
 a separate application rollback branch and maintained HTTP reference probes.
 See [rollout.md](rollout.md) for the implemented input/evidence envelope. Rollout
 experiments deliberately preserve sessions and committed mixed-version writes.
-Rollback experiments run separately. Lock evidence and performance measurements
-are advisory and must distinguish missing observations from passing observations.
+Rollback experiments run separately. Controlled contention requires an observed wait and blocker release. Performance and
+plans have separate advisory/informational outcomes; missing observations remain explicit.
+See [observations.md](observations.md) for the implemented Steps 12–14 boundaries.
 
 ## Evidence and results
 
@@ -68,6 +69,11 @@ phase-qualified IDs such as `baseline/deployed-v1/get-user` and
 and derives coverage from actual observations; caller-supplied completion flags
 cannot substitute for missing evidence.
 
-Render terminal, JSON, Markdown, and eventually escaped HTML from the same result.
+Render terminal, JSON, Markdown, and escaped static HTML from the same result.
 Persist reports after cleanup so cleanup status is accurate. Never include secrets
 or connection credentials in reports or resource manifests.
+
+Packaged starters use the same validated inputs and pipeline. Saved-result rendering
+has no live database access; selected-run cleaning delegates exact ownership and
+active-run checks to the host runtime. CI verifies installed wheel/sdist behavior
+outside the checkout; see [onboarding.md](onboarding.md) and [ci.md](ci.md).

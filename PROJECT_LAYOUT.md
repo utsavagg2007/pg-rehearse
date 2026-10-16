@@ -1,6 +1,6 @@
 # Project layout
 
-Updated: 2026-10-16. Steps 1–11 implement the runtime, preflight, scoped workers, migrations, reports, immutable clones, rollout phases and real HTTP reference apps.
+Updated: 2026-10-16. Steps 1–18 implement runtime through labeled evaluation/fault audit. Step 19 release/pilot materials are prepared; external feedback is pending.
 
 ```text
 pg-rehearse/
@@ -9,6 +9,8 @@ pg-rehearse/
 ├── .python-version                Local Python 3.14 selection
 ├── .venv -> venv/                  Local editable development environment
 ├── README.md                      Setup and current capability
+├── RUNNING.md                     Complete setup, custom rehearsal, reports and recovery guide
+├── CHANGELOG.md                   Prepared 0.1.0 notes and support boundaries
 ├── AGENTS.md                      Instructions for future implementation work
 ├── PROGRESS.md                    Measured code status and verification
 ├── IMPLEMENTATION_ORDER.md        Ordered feature roadmap and acceptance criteria
@@ -18,7 +20,7 @@ pg-rehearse/
 ├── src/pg_rehearse/
 │   ├── __init__.py                Package version
 │   ├── __main__.py                python -m pg_rehearse entry point
-│   ├── cli.py                     doctor, validate, sandbox, recover, complete SQL rehearsal via run
+│   ├── cli.py                     doctor, validate, sandbox, recover, run, init, demo, report, clean
 │   ├── config.py                  YAML, path and contract validation
 │   ├── models.py                  Configuration and evidence contracts
 │   ├── doctor.py                  Read-only environment diagnostics
@@ -32,10 +34,12 @@ pg-rehearse/
 │   ├── workload/                  Contracts, SQL runner, assertions, sessions
 │   ├── analysis/                  Compatibility, coverage, locks, timings, plans
 │   ├── report/                    Terminal, JSON, Markdown, HTML
+│   │   └── templates/report.html  Self-contained static HTML/CSS, no scripts or remote assets
 │   ├── rollout/                   Phases, mixed writes, rollback, application probes
 │   ├── observe/                   Locks, timings, query plans
 │   ├── benchmarks/                Runner, statistics, controls
 │   ├── onboarding/                init, demo, owned-resource cleanup
+│   │   └── examples/orders/       Bundled validated rename/control starter assets
 │   └── evaluation/                Labeled case evaluation
 ├── examples/orders/
 │   ├── rehearsal.yml              Intentionally incompatible rename example
@@ -47,10 +51,12 @@ pg-rehearse/
 │   ├── unsupported/               Rejected ADD COLUMN counterexample
 │   └── apps/                      Independently runnable old/new reference HTTP applications
 ├── tests/
-│   ├── unit/                      259 unit cases across twelve files
-│   ├── integration/               75 real PostgreSQL cases across seven files
-│   └── e2e/                       CLI verification reference
+│   ├── unit/                      340 unit cases across eighteen files
+│   ├── integration/               97 Docker/PostgreSQL cases across ten files
+│   └── e2e/                       Seven labeled cases, including zero-allocation unsupported input
 ├── docker/worker.Dockerfile        Locked nonroot worker image build
+├── scripts/check_distributions.py Installed wheel/sdist isolation, reproducibility and real CLI checks
+├── scripts/evaluate.py            Real fixed case matrix, incremental private summaries and reports
 ├── docs/
 │   ├── quickstart.md
 │   ├── architecture.md
@@ -60,10 +66,16 @@ pg-rehearse/
 │   ├── baseline.md                Baseline loading, probes and semantic assertions
 │   ├── rehearsal.md               Migration/clone lifecycle, findings and final reports
 │   ├── rollout.md                 Phases, HTTP applications, index/CHECK facts and limits
+│   ├── observations.md            Controlled locks, advisory timings, private plan evidence
+│   ├── onboarding.md              Starter, real demo, saved reports and selected-run cleanup
+│   ├── ci.md                      Read-only CI, artifact boundary and locked distribution checks
+│   ├── audit.md                   Code review across all steps, focused fixes and known boundaries
+│   ├── release.md                 Source/build verification, upgrade guidance and release checklist
+│   ├── pilot.md                   Independent developer protocol and pending feedback record
 │   └── decisions/                 Foundation and verified runtime ADRs
 ├── benchmarks/                    Performance acceptance plan
-├── evaluation/                    Labeled-case acceptance plan
-└── .github/workflows/ci.yml        Python 3.12/3.14 preflight, runtime and worker CI
+├── evaluation/                    Case labels, fault-test map and interpretation limits
+└── .github/workflows/ci.yml        Python 3.12/3.14 real rehearsals and installed distribution CI
 ```
 
 ## Implemented modules
@@ -102,30 +114,37 @@ pg-rehearse/
 The eleven package `__init__.py` files establish namespaces. They do not implement
 database features.
 
-## Planned modules
+## Steps 12–14 modules
 
-Each of these 14 modules is explicitly labeled as a placeholder. Docstrings
-describe responsibilities; they are not working feature implementations. The
-remaining modules do not execute database features.
+| Module | Responsibility |
+| --- | --- |
+| `observe/runner.py`, `observe/validation.py` | Worker diagnostic dispatch and pure receipt checks for actor barriers, schedules and execution consent |
+| `observe/locks.py`, `analysis/locks.py` | Four scoped contention actors, separate observer, retained waits and required lock coverage |
+| `observe/timings.py`, `benchmarks/runner.py` | Sequential committed workload timings, identical schedules and environment capture |
+| `benchmarks/statistics.py`, `benchmarks/controls.py`, `analysis/performance.py` | Descriptive samples, unchanged A/A controls and conservative advisory quality gates |
+| `observe/plans.py`, `analysis/plans.py` | Separate bounded EXPLAIN capture, private raw facts and sanitized versioned structural comparison |
 
-| Module | Feature order | Responsibility |
-| --- | --- | --- |
-| `analysis/locks.py` | 12 | Interpret observed waits and blockers without treating absent evidence as success. |
-| `analysis/performance.py` | 13 | Generate advisory findings from repeated measurements and unchanged controls. |
-| `analysis/plans.py` | 14 | Compare normalized query plans while preserving the original captured evidence. |
-| `report/html.py` | 15 | Render escaped static HTML without executing embedded input content. |
-| `observe/locks.py` | 12 | Observe lock waits through a separate connection under controlled contention. |
-| `observe/timings.py` | 13 | Capture warmups and repeated operation timings with run context. |
-| `observe/plans.py` | 14 | Capture PostgreSQL query plans with explicit execution consent in the isolated runtime. |
-| `benchmarks/runner.py` | 13 | Run repeatable baseline and candidate measurement groups on fresh branches. |
-| `benchmarks/statistics.py` | 13 | Summarize sample counts and dispersion without claiming unsupported precision. |
-| `benchmarks/controls.py` | 13 | Measure unchanged controls to identify environmental variation. |
-| `onboarding/init.py` | 16 | Create a validated starter project without overwriting existing user files. |
-| `onboarding/demo.py` | 16 | Run the real rename demonstration once the complete pipeline is available. |
-| `onboarding/clean.py` | 16 | Expose run-scoped resource recovery using ownership-checked runtime cleanup. |
-| `evaluation/cases.py` | 18 | Compare labeled migration cases and lifecycle fault injections against actual results. |
+The benchmark example, contention release/timeout examples and plan fixture/configuration
+are under `examples/orders/`. No dependency was added.
 
-The HTML template directory will be added with its first actual template in feature
-15. Benchmark suites and broader labeled evaluation inputs will be added with their
-corresponding features. Avoid empty implementation claims.
+## Steps 15–17 modules
 
+| Module | Responsibility |
+| --- | --- |
+| `report/html.py`, `report/templates/report.html` | Escaped, portable HTML over the final RunResult, with coverage and uncertainty visible |
+| `report/json_report.py` | Bounded saved-result validation and existing private atomic writers |
+| `onboarding/init.py`, `onboarding/examples/orders/` | Exclusive starter creation and preflight from packaged resources |
+| `onboarding/demo.py` | Temporary starter through the real rehearsal pipeline, retained evidence and expected failure |
+| `onboarding/clean.py` | Validated single-run selection delegated to ownership-checked host recovery |
+| `scripts/check_distributions.py`, CI workflow | Identical sdist rebuild, isolated installs, real expected-failure/control checks and selected artifacts |
+
+## Steps 18–19
+
+`evaluation/cases.py` defines seven fixed labels and compares real exit, completion,
+verdict, coverage, cleanup and rule/SQLSTATE evidence without influencing product
+analysis. `scripts/evaluate.py` runs that matrix and retains each report plus summary.
+Release/pilot preparation is documentation; actual external sessions remain pending.
+
+No source placeholders remain. There are 66 Python source files: 53 working modules,
+two version/entry-point files and eleven namespace files. Verification totals and
+local evidence are recorded in PROGRESS.md.

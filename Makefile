@@ -1,4 +1,4 @@
-.PHONY: setup check test integration lint format typecheck build doctor worker-image
+.PHONY: setup check test integration evaluate lint format typecheck build package-check doctor worker-image
 
 setup:
 	uv sync --locked
@@ -10,6 +10,9 @@ test:
 
 integration:
 	uv run --locked pytest --run-docker
+
+evaluate:
+	uv run --locked python scripts/evaluate.py
 
 worker-image:
 	docker build -f docker/worker.Dockerfile -t pg-rehearse-worker:0.1.0 .
@@ -26,7 +29,10 @@ typecheck:
 	uv run --locked mypy
 
 build:
-	uv build
+	uv run --locked python -m build --no-isolation
+
+package-check: build
+	uv run --locked python scripts/check_distributions.py
 
 doctor:
 	uv run --locked pg-rehearse doctor

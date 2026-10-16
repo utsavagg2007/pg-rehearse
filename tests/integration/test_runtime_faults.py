@@ -1,13 +1,16 @@
+import os
+import signal
 from pathlib import Path
 from typing import Any
 
 import pytest
 from docker import DockerClient
 from docker.errors import APIError, NotFound
-from docker.models.containers import ContainerCollection
+from docker.models.containers import Container, ContainerCollection
 
-from pg_rehearse.errors import ManifestError, RuntimeLifecycleError
+from pg_rehearse.errors import ManifestError, RunInterrupted, RuntimeLifecycleError
 from pg_rehearse.models import CleanupStatus
+from pg_rehearse.orchestrator import termination_signals
 from pg_rehearse.runtime.docker import DockerRuntime
 from pg_rehearse.runtime.manifest import ManifestStore, RunManifest
 
@@ -57,3 +60,33 @@ def test_manifest_write_failure_after_allocation_still_cleans(
     assert manifest.cleanup == CleanupStatus.COMPLETE
     assert manifest.failure == "ManifestError"
     assert all(record.removed for record in manifest.resources)
+
+
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
+def test_first_signal_during_cleanup_finishes_owned_teardown(
+    docker_client: DockerClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signum: int
+) -> None:
+    remove = Container.remove
+    interrupted = False
+    container_id = None
+
+    def interrupt_once(self: Container, *args: Any, **kwargs: Any) -> Any:
+        nonlocal interrupted
+        if self.id == container_id and not interrupted:
+            interrupted = True
+            os.kill(os.getpid(), signum)
+        return remove(self, *args, **kwargs)
+
+    monkeypatch.setattr(Container, "remove", interrupt_once)
+    with pytest.raises(RunInterrupted) as error:
+        with termination_signals():
+            with DockerRuntime(state_dir=tmp_path, client=docker_client).provision() as environment:
+                container_id = environment.container_id
+    assert interrupted and error.value.signum == signum
+    manifest = ManifestStore(environment.manifest_path).load()
+    assert manifest.cleanup == CleanupStatus.COMPLETE
+    assert all(record.removed for record in manifest.resources)
+    with pytest.raises(NotFound):
+        docker_client.containers.get(environment.container_id)
+    with pytest.raises(NotFound):
+        docker_client.networks.get(environment.network_id)

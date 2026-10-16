@@ -1,5 +1,6 @@
 """Coverage is derived from accepted inputs and observed receipts, never claimed flags."""
 
+from pg_rehearse.analysis.locks import lock_coverage
 from pg_rehearse.config import LoadedConfig
 from pg_rehearse.migration.catalog import catalog_verified
 from pg_rehearse.models import ContractSpec, Coverage
@@ -44,6 +45,11 @@ def coverage_for(loaded: LoadedConfig, evidence: RehearsalEvidence) -> Coverage:
     migration_tasks = ["post_deployed"] + (["post_candidate"] if loaded.candidate_contract else [])
     if loaded.spec.rollout:
         migration_tasks += ["rollout", "rollback"]
+    if loaded.spec.contention:
+        required.append("clone/contention")
+        migration_tasks.append("contention")
+        required.extend(f"migration/contention/{step.id}" for step in loaded.spec.migrations)
+        required.extend(lock_coverage(None).required)
     required.extend(
         f"catalog/{task}/{step.id}" for task in migration_tasks for step in loaded.spec.migrations
     )
@@ -53,9 +59,13 @@ def coverage_for(loaded: LoadedConfig, evidence: RehearsalEvidence) -> Coverage:
     if evidence.template and evidence.template.sealed:
         completed.append("template/sealed")
     for experiment in evidence.experiments:
+        if experiment.task in {"benchmark", "plan_baseline", "plan_candidate"}:
+            continue  # Advisory experiments report their own sample/plan coverage.
         phase = "baseline" if experiment.task == "baseline_probe" else experiment.task
         if experiment.baseline and experiment.baseline.success:
             completed.append(f"clone/{phase}")
+        if experiment.task == "contention":
+            completed.extend(lock_coverage(experiment.contention).completed)
         completed.extend(f"migration/{phase}/{step.step_id}" for step in experiment.migrations)
         completed.extend(
             f"catalog/{phase}/{step.step_id}"

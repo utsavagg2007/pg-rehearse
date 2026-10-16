@@ -16,7 +16,7 @@ from docker.types import LogConfig
 from pydantic import Field
 from requests.exceptions import RequestException
 
-from pg_rehearse.errors import CleanupError, ReadinessTimeout, RuntimeLifecycleError
+from pg_rehearse.errors import CleanupError, ReadinessTimeout, RunInterrupted, RuntimeLifecycleError
 from pg_rehearse.models import POSTGRES_IMAGE_PATTERN, CleanupStatus, StrictModel, Timeouts
 from pg_rehearse.runtime.cleanup import cleanup_resources
 from pg_rehearse.runtime.manifest import ManifestStore, ResourceRecord, RunManifest, resource_name
@@ -232,17 +232,35 @@ class DockerRuntime:
                 raise
             finally:
                 self._active = None
+                cleanup_deadline = time.monotonic() + self.options.cleanup_seconds
+                interruption: RunInterrupted | None = None
                 try:
-                    status = cleanup_resources(
-                        client, store, manifest, timeout_seconds=self.options.cleanup_seconds
-                    )
+                    try:
+                        status = cleanup_resources(
+                            client, store, manifest, timeout_seconds=self.options.cleanup_seconds
+                        )
+                    except RunInterrupted as exc:
+                        interruption = exc
+                        status = cleanup_resources(
+                            client,
+                            store,
+                            manifest,
+                            timeout_seconds=max(0, cleanup_deadline - time.monotonic()),
+                        )
                     if status == CleanupStatus.FAILED:
                         message = f"Cleanup incomplete; recover using {store.path}"
-                        if failure is not None:
+                        if interruption is not None:
+                            interruption.add_note(message)
+                        elif failure is not None:
                             failure.add_note(message)
                         else:
                             raise CleanupError(message)
                 except BaseException as cleanup_failure:
+                    if interruption is not None:
+                        interruption.add_note(
+                            f"Cleanup could not finish; recover using {store.path}"
+                        )
+                        raise interruption from cleanup_failure
                     if failure is None:
                         raise
                     failure.add_note(f"Cleanup could not finish; recover using {store.path}")
@@ -251,3 +269,5 @@ class DockerRuntime:
                 finally:
                     if client is not None and self._client is None:
                         client.close()
+                if interruption is not None:
+                    raise interruption

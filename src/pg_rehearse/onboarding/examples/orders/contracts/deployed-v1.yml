@@ -1,0 +1,19 @@
+schema_version: 1
+version: deployed-v1
+operations:
+  - id: get-user
+    sql: SELECT id, name FROM users WHERE id = %s ORDER BY id;
+    parameters: [7]
+    required: true
+    expect:
+      columns: [id, name]
+      rows: [[7, Ada]]
+      row_count: 1
+  - id: list-orders
+    sql: SELECT id, status, amount_cents FROM orders WHERE user_id = %s ORDER BY id;
+    parameters: [7]
+    required: true
+    expect:
+      columns: [id, status, amount_cents]
+      rows: [[101, pending, 12500]]
+      row_count: 1

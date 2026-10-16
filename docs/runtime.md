@@ -1,6 +1,6 @@
 # Disposable PostgreSQL runtime
 
-Features 1–11 are implemented. The host coordinator owns Docker operations; the
+Features 1–17 are implemented. The host coordinator owns Docker operations; the
 isolated workers load fixtures, apply migrations and run scoped contract probes. The runtime's readiness
 probe is `pg_isready` over TCP, not an application compatibility check.
 
@@ -92,6 +92,12 @@ visible cleanup failure; resolve the blocking resource separately and retry the
 same recovery command. Already absent resources count as removed, making recovery
 idempotent. A failure to write cleanup bookkeeping prevents a successful result
 even when physical teardown finishes.
+
+`pg-rehearse clean --run-id <run-id> --state-dir .pg-rehearse/runs` selects the
+same manifest through a validated 32-character lowercase hexadecimal run ID. It
+rejects symlink run directories/manifests, refuses active runs and uses the existing
+ownership checks. It retains all input snapshots, manifests and reports. Cleanup
+success returns 0; invalid selection returns 2; failed or active cleanup returns 3.
 
 Readiness HTTP calls use the remaining readiness budget, capped at five seconds.
 Cleanup has a separate 30-second budget, with bounded Docker requests. These are

@@ -3,6 +3,9 @@
 from pydantic import SecretStr
 
 from pg_rehearse.analysis.coverage import contract_phases, coverage_for
+from pg_rehearse.analysis.locks import lock_summary
+from pg_rehearse.analysis.performance import compare_performance
+from pg_rehearse.analysis.plans import compare_plans
 from pg_rehearse.config import LoadedConfig
 from pg_rehearse.fixtures.template import template_identity
 from pg_rehearse.migration.catalog import catalog_verified
@@ -18,7 +21,13 @@ from pg_rehearse.models import (
 from pg_rehearse.rollout.phases import rollout_plan
 from pg_rehearse.runtime.manifest import RunManifest
 from pg_rehearse.runtime.roles import ROLE_NAMES
-from pg_rehearse.worker_protocol import RehearsalEvidence, WorkerInputs, WorkerRequest
+from pg_rehearse.worker_protocol import (
+    RehearsalEvidence,
+    WorkerInputs,
+    WorkerRequest,
+    experiment_id,
+    experiment_tasks,
+)
 from pg_rehearse.workload.contracts import check_id
 
 
@@ -46,17 +55,14 @@ def analyze(
     for receipt in ([evidence.seed] if evidence.seed else []) + evidence.experiments:
         try:
             expected_task = "seed" if receipt is evidence.seed else receipt.task
-            if expected_task not in {
-                "seed",
-                "baseline_probe",
-                "post_deployed",
-                "post_candidate",
-                "rollout",
-                "rollback",
-            }:
+            if (expected_task, receipt.trial, receipt.arm) not in [
+                ("seed", None, None),
+                *experiment_tasks(loaded),
+            ]:
                 raise ValueError("Unexpected task")
             if receipt is not evidence.seed and any(
-                old.task == receipt.task for old in accepted.experiments
+                (old.task, old.trial, old.arm) == (receipt.task, receipt.trial, receipt.arm)
+                for old in accepted.experiments
             ):
                 raise ValueError("Duplicate experiment")
             receipt.verify(
@@ -68,6 +74,8 @@ def analyze(
                     timeouts=loaded.spec.timeouts,
                     task=expected_task,
                     database=receipt.database,
+                    trial=receipt.trial,
+                    arm=receipt.arm,
                 )
             )
             if receipt is evidence.seed:
@@ -140,7 +148,10 @@ def analyze(
     applications = [result for receipt in experiments for result in receipt.applications]
     for receipt in experiments:
         for step, document in zip(receipt.migrations, loaded.migration_sql, strict=False):
-            if not catalog_verified(step, document):
+            if not catalog_verified(step, document) and receipt.task not in {
+                "benchmark",
+                "plan_candidate",
+            }:
                 finding(
                     "CATALOG_EVIDENCE_MISSING",
                     "Migration catalog facts are missing or disagree with the declared DDL.",
@@ -266,6 +277,64 @@ def analyze(
                     evidence=app.model_dump(mode="json"),
                 )
             )
+    contention = next((r.contention for r in experiments if r.task == "contention"), None)
+    if contention:
+        findings.append(
+            Finding(
+                rule_id="LOCK_OBSERVATION",
+                severity=Severity.INFO,
+                explanation=(
+                    "Controlled contention observations; missing samples "
+                    "do not prove absence of waits."
+                ),
+                evidence=lock_summary(contention),
+            )
+        )
+        for actor, result in (("blocker", contention.blocker), ("probe", contention.probe)):
+            if result and not result.success:
+                infrastructure_error |= (
+                    actor == "blocker" or result.error_kind == "connection_error"
+                )
+                finding(
+                    "CONTENTION_EXECUTION_FAILED",
+                    f"Contention {actor} failed; retain its SQLSTATE and deadline.",
+                    sqlstate=result.sqlstate,
+                    error_kind=result.error_kind,
+                )
+    benchmarks, performance = compare_performance(loaded, experiments)
+    infrastructure_error |= any(
+        sample.error_kind == "connection_error"
+        for receipt in experiments
+        if receipt.benchmark
+        for sample in receipt.benchmark.samples
+    )
+    for outcome in performance:
+        if outcome["status"] != "no_regression_observed":
+            findings.append(
+                Finding(
+                    rule_id="PERFORMANCE_ADVISORY",
+                    severity=Severity.WARNING,
+                    explanation=f"{outcome['operation_id']}: {outcome['status']} (advisory).",
+                    evidence=outcome,
+                )
+            )
+    plans = []
+    if loaded.spec.plans:
+        before = next((r.plans for r in experiments if r.task == "plan_baseline"), [])
+        after = next((r.plans for r in experiments if r.task == "plan_candidate"), [])
+        plans = compare_plans(before, after, loaded.spec.plans.operations)
+        for plan in plans:
+            findings.append(
+                Finding(
+                    rule_id="QUERY_PLAN",
+                    severity=Severity.INFO,
+                    explanation=(
+                        f"{plan['operation_id']}: {plan['status']}; "
+                        f"structural change {plan['structure_changed']}."
+                    ),
+                    evidence=plan,
+                )
+            )
     if coverage.missing:
         finding(
             "EVIDENCE_MISSING",
@@ -285,7 +354,11 @@ def analyze(
     complete = (
         not coverage.missing
         and not invalid
-        and all(r.completion == "complete" for r in experiments)
+        and all(
+            r.completion == "complete"
+            for r in experiments
+            if r.task not in {"benchmark", "plan_baseline", "plan_candidate"}
+        )
     )
     completion = (
         Completion.INFRASTRUCTURE_ERROR
@@ -298,7 +371,7 @@ def analyze(
     if (
         complete
         and not infrastructure_error
-        and not findings
+        and not any(f.severity == Severity.ERROR for f in findings)
         and all(op.success for op in operations)
         and manifest.cleanup == CleanupStatus.COMPLETE
     ):
@@ -315,7 +388,9 @@ def analyze(
         branches=[
             BranchEvidence(
                 database=r.database,
-                phase="baseline" if r.task == "baseline_probe" else r.task,
+                phase="baseline"
+                if r.task == "baseline_probe"
+                else experiment_id(r.task, r.trial, r.arm),
                 data_sha256=r.baseline.data_sha256,
             )
             for r in experiments
@@ -324,7 +399,25 @@ def analyze(
         findings=findings,
         phases=[phase for receipt in experiments for phase in receipt.phases],
         applications=applications,
+        contention=contention,
+        benchmarks=benchmarks,
+        performance=performance,
+        plans=plans,
+        environment={
+            "postgres_image_id": manifest.image_id,
+            "postgres_image_digest": manifest.image_digest,
+            "worker_image_id": manifest.worker_image_id,
+            "architecture": manifest.architecture,
+            "operating_system": manifest.operating_system,
+            "postgres_memory_bytes": 536870912,
+            "postgres_cpus": 1,
+            "storage": "256 MiB tmpfs",
+            "seed": loaded.spec.seed,
+        },
         evidence_levels=["sql_contract"]
-        + (["reference_application"] if any(app.http_status for app in applications) else []),
+        + (["reference_application"] if any(app.http_status for app in applications) else [])
+        + (["controlled_contention"] if contention and contention.samples else [])
+        + (["advisory_performance"] if benchmarks else [])
+        + (["diagnostic_plans"] if any(p["status"] == "compared" for p in plans) else []),
         cleanup=manifest.cleanup,
     )

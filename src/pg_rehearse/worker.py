@@ -25,7 +25,7 @@ from pg_rehearse.workload.runner import execution_deadline, run_contract
 
 @contextmanager
 def connect_as(
-    request: WorkerRequest, role: Role
+    request: WorkerRequest, role: Role, *, actor: str | None = None
 ) -> Iterator[psycopg.Connection[tuple[object, ...]]]:
     """Future pipeline stages use this scoped connection, never a bootstrap connection."""
     options = (
@@ -41,7 +41,11 @@ def connect_as(
         user=ROLE_NAMES[role],
         password=request.credentials[role].get_secret_value(),
         connect_timeout=max(2, min(5, math.ceil(request.timeouts.worker_seconds))),
-        application_name=f"pg-rehearse/{request.run_id}/{role}",
+        application_name=(
+            f"pgr/{request.run_id[:12]}/{request.task}/{actor}"
+            if actor
+            else f"pg-rehearse/{request.run_id}/{role}"
+        ),
         options=options,
         sslmode="disable",
         passfile="/dev/null",
@@ -102,6 +106,8 @@ def check_roles(request: WorkerRequest) -> WorkerEvidence:
         roles=roles,
         task=request.task,
         database=request.database,
+        trial=request.trial,
+        arm=request.arm,
     )
     evidence.verify_roles(request)
     return evidence
@@ -113,6 +119,15 @@ def execute_baseline(request: WorkerRequest) -> WorkerEvidence:
     with connect_as(request, "setup") as connection:
         loader = seed_baseline if request.task in {"baseline", "seed"} else verify_baseline
         evidence.baseline = loader(connection, loaded.schema_sql, loaded.fixtures, loaded.spec.seed)
+    if request.task in {"contention", "benchmark", "plan_baseline", "plan_candidate"}:
+        from pg_rehearse.observe.runner import execute_diagnostics
+
+        if evidence.baseline.success:
+            execute_diagnostics(request, loaded, evidence)
+        else:
+            evidence.completion = "partial"
+        evidence.verify(request)
+        return evidence
     if request.task in {"rollout", "rollback"}:
         from pg_rehearse.rollout.runner import execute_rollout
         from pg_rehearse.rollout.validation import rollout_coverage

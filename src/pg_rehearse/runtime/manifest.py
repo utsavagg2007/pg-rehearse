@@ -1,12 +1,13 @@
 """Atomic, credential-free allocation intents and run ownership records."""
 
 import os
+import stat
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 from uuid import uuid4
 
 from pydantic import Field, model_validator
@@ -19,10 +20,17 @@ RUN_LABEL = "io.pg-rehearse.run-id"
 OWNER_LABEL = "io.pg-rehearse.owner"
 KIND_LABEL = "io.pg-rehearse.kind"
 ResourceKind = Literal["container", "worker", "network"]
+MAX_MANIFEST_BYTES = 1_048_576
 
 
-WorkerSlot = Literal[
-    "seed", "baseline_probe", "post_deployed", "post_candidate", "rollout", "rollback"
+WorkerSlot = Annotated[
+    str,
+    Field(
+        pattern=(
+            r"^(seed|baseline_probe|post_deployed|post_candidate|rollout|rollback|contention|"
+            r"plan_baseline|plan_candidate|benchmark_[1-5]_(baseline|candidate|control_a|control_b))$"
+        )
+    ),
 ]
 
 
@@ -119,8 +127,15 @@ class ManifestStore:
 
     def load(self) -> RunManifest:
         try:
-            manifest = RunManifest.model_validate_json(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
+            descriptor = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as stream:
+                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                    raise ValueError("Not a regular file")
+                payload = stream.read(MAX_MANIFEST_BYTES + 1)
+            if len(payload) > MAX_MANIFEST_BYTES:
+                raise ValueError("Manifest too large")
+            manifest = RunManifest.model_validate_json(payload)
+        except (OSError, ValueError, RecursionError) as exc:
             raise ManifestError(
                 "Invalid or unreadable manifest; no resources were removed"
             ) from exc

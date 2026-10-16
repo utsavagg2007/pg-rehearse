@@ -3,18 +3,21 @@
 import hashlib
 import json
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, Literal, Self, get_args
 
 from pydantic import Field, SecretStr, model_validator
 
 from pg_rehearse.models import (
     ApplicationResult,
     BaselineEvidence,
+    BenchmarkEvidence,
+    ContentionResult,
     Coverage,
     InputModel,
     MigrationResult,
     OperationResult,
     PhaseResult,
+    PlanEvidence,
     TemplateEvidence,
     Timeouts,
 )
@@ -28,14 +31,69 @@ MAX_REQUEST_BYTES = 6 * MAX_INPUT_TOTAL + 65_536
 MAX_RESPONSE_BYTES = 8 * 1_048_576
 WORKER_IMAGE = "pg-rehearse-worker:0.1.0"
 WorkerTask = Literal[
-    "baseline", "seed", "baseline_probe", "post_deployed", "post_candidate", "rollout", "rollback"
+    "baseline",
+    "seed",
+    "baseline_probe",
+    "post_deployed",
+    "post_candidate",
+    "rollout",
+    "rollback",
+    "contention",
+    "benchmark",
+    "plan_baseline",
+    "plan_candidate",
 ]
+BenchmarkArm = Literal["baseline", "candidate", "control_a", "control_b"]
 
 
-def task_database(run_id: str, task: WorkerTask) -> str:
+def experiment_id(
+    task: WorkerTask, trial: int | None = None, arm: BenchmarkArm | None = None
+) -> str:
+    if task not in get_args(WorkerTask):
+        raise ValueError("Unknown experiment task")
+    if task == "benchmark":
+        if (
+            type(trial) is not int
+            or not 1 <= trial <= 5
+            or arm not in {"baseline", "candidate", "control_a", "control_b"}
+        ):
+            raise ValueError("Benchmark requires a bounded trial and arm")
+        return f"benchmark_{trial}_{arm}"
+    if trial is not None or arm is not None:
+        raise ValueError("Only benchmark tasks accept a trial and arm")
+    return task
+
+
+def experiment_tasks(
+    loaded: "LoadedConfig",
+) -> list[tuple[WorkerTask, int | None, BenchmarkArm | None]]:
+    tasks: list[tuple[WorkerTask, int | None, BenchmarkArm | None]] = [
+        ("baseline_probe", None, None),
+        ("post_deployed", None, None),
+    ]
+    if loaded.candidate_contract:
+        tasks.append(("post_candidate", None, None))
+    if loaded.spec.rollout:
+        tasks.extend([("rollout", None, None), ("rollback", None, None)])
+    if loaded.spec.contention:
+        tasks.append(("contention", None, None))
+    if loaded.spec.benchmark:
+        for trial in range(1, loaded.spec.benchmark.trials + 1):
+            arms: list[BenchmarkArm] = ["control_a", "control_b", "baseline", "candidate"]
+            for arm in arms if trial % 2 else reversed(arms):
+                tasks.append(("benchmark", trial, arm))
+    if loaded.spec.plans:
+        tasks.extend([("plan_baseline", None, None), ("plan_candidate", None, None)])
+    return tasks
+
+
+def task_database(
+    run_id: str, task: WorkerTask, trial: int | None = None, arm: BenchmarkArm | None = None
+) -> str:
+    name = experiment_id(task, trial, arm)
     if task in {"baseline", "seed"}:
         return "rehearsal"
-    return f"pgr_{run_id}_{task}"
+    return f"pgr_{run_id}_{name}"
 
 
 class InputFile(InputModel):
@@ -76,6 +134,8 @@ class WorkerRequest(InputModel):
     timeouts: Timeouts
     task: WorkerTask = "baseline"
     database: str = "rehearsal"
+    trial: int | None = Field(default=None, ge=1, le=5)
+    arm: BenchmarkArm | None = None
 
     @model_validator(mode="after")
     def complete_credentials(self) -> Self:
@@ -83,7 +143,7 @@ class WorkerRequest(InputModel):
             raise ValueError("Exactly four scoped credentials are required")
         if self.database_host != f"pgr-{self.run_id}-postgres":
             raise ValueError("Database host does not match the run")
-        if self.database != task_database(self.run_id, self.task):
+        if self.database != task_database(self.run_id, self.task, self.trial, self.arm):
             raise ValueError("Database does not match the run experiment")
         if any(not secret.get_secret_value() for secret in self.credentials.values()):
             raise ValueError("Empty credentials are not allowed")
@@ -124,7 +184,12 @@ class WorkerEvidence(InputModel):
     coverage: Coverage = Field(default_factory=Coverage)
     task: WorkerTask = "baseline"
     database: str = "rehearsal"
+    trial: int | None = Field(default=None, ge=1, le=5)
+    arm: BenchmarkArm | None = None
     migrations: list[MigrationResult] = Field(default_factory=list, max_length=100)
+    contention: ContentionResult | None = None
+    benchmark: BenchmarkEvidence | None = None
+    plans: list[PlanEvidence] = Field(default_factory=list, max_length=5)
 
     def verify_roles(self, request: WorkerRequest) -> None:
         if self.run_id != request.run_id or self.input_hashes != request.inputs.hashes:
@@ -153,8 +218,16 @@ class WorkerEvidence(InputModel):
 
         self.verify_roles(request)
         loaded = load_worker_config(request.inputs)
-        if (self.task, self.database) != (request.task, request.database):
+        if (self.task, self.database, self.trial, self.arm) != (
+            request.task,
+            request.database,
+            request.trial,
+            request.arm,
+        ):
             raise ValueError("Wrong experiment identity")
+        diagnostic = request.task in {"contention", "benchmark", "plan_baseline", "plan_candidate"}
+        if not diagnostic and (self.contention or self.benchmark or self.plans):
+            raise ValueError("Unexpected diagnostic evidence")
         baseline = self.baseline
         if baseline is None or baseline.seed != loaded.spec.seed:
             raise ValueError("Missing or mismatched baseline evidence")
@@ -166,10 +239,15 @@ class WorkerEvidence(InputModel):
         if contract is None:
             raise ValueError("Missing experiment contract")
         phase = "baseline" if request.task in {"baseline", "baseline_probe"} else request.task
-        if request.task not in {"rollout", "rollback"} and self.coverage != (
-            Coverage()
-            if request.task == "seed"
-            else contract_coverage(contract, phase, self.operations)
+        if (
+            not diagnostic
+            and request.task not in {"rollout", "rollback"}
+            and self.coverage
+            != (
+                Coverage()
+                if request.task == "seed"
+                else contract_coverage(contract, phase, self.operations)
+            )
         ):
             raise ValueError("Contract coverage does not match recorded operations")
         if not baseline.success:
@@ -180,6 +258,9 @@ class WorkerEvidence(InputModel):
                 or self.migrations
                 or self.phases
                 or self.applications
+                or self.contention
+                or self.benchmark
+                or self.plans
                 or baseline.data_sha256
                 or baseline.table_rows
                 or baseline.schema_statements
@@ -210,6 +291,11 @@ class WorkerEvidence(InputModel):
                 or self.completion != "complete"
             ):
                 raise ValueError("Seed task cannot claim application or migration evidence")
+            return
+        if diagnostic:
+            from pg_rehearse.observe.validation import verify_diagnostics
+
+            verify_diagnostics(loaded, request, self)
             return
         if request.task in {"rollout", "rollback"}:
             from pg_rehearse.rollout.validation import verify_rollout

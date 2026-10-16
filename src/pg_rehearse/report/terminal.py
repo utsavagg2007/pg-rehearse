@@ -15,6 +15,24 @@ def render_terminal(result: RunResult, console: Console) -> None:
         f"Required checks: {len(result.coverage.required)}; missing: {len(result.coverage.missing)}"
     )
     console.print("Evidence: " + ", ".join(result.evidence_levels), markup=False)
+    if result.contention:
+        console.print(
+            f"Contention: {len(result.contention.samples)} samples; "
+            f"blocker released {result.contention.blocker_released}"
+        )
+    for outcome in result.performance:
+        console.print(
+            f"Performance {outcome.get('operation_id', 'Not recorded')}: "
+            f"{outcome.get('status', 'Not recorded')} (advisory)",
+            markup=False,
+        )
+    for plan in result.plans:
+        console.print(
+            f"Plan {plan.get('operation_id', 'Not recorded')}: "
+            f"{plan.get('status', 'Not recorded')}; "
+            f"structure changed {plan.get('structure_changed', 'Not recorded')}",
+            markup=False,
+        )
     for phase in result.phases:
         console.print(
             f"Phase {phase.id}: {phase.completion}; barrier {phase.barrier}", markup=False

@@ -1,6 +1,7 @@
 """Bound contract probes in independent rollback-only transactions."""
 
 import signal
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -28,6 +29,10 @@ class _DeadlineInterrupt(KeyboardInterrupt):
 @contextmanager
 def execution_deadline(seconds: float) -> Iterator[None]:
     """Linux worker main thread; nested budgets cannot extend an existing deadline."""
+    if threading.current_thread() is not threading.main_thread():
+        # Contention actors use server deadlines; the main worker retains the wall budget.
+        yield
+        return
 
     def expired(signum: int, frame: FrameType | None) -> None:
         raise _DeadlineInterrupt()
@@ -35,8 +40,12 @@ def execution_deadline(seconds: float) -> Iterator[None]:
     started = time.monotonic()
     handler = signal.getsignal(signal.SIGALRM)
     previous = signal.getitimer(signal.ITIMER_REAL)
+    if previous[0] and previous[0] <= seconds:
+        # Only the owning scope converts its interrupt; inner SQL handlers cannot swallow it.
+        yield
+        return
     signal.signal(signal.SIGALRM, expired)
-    signal.setitimer(signal.ITIMER_REAL, min(seconds, previous[0]) if previous[0] else seconds)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
     try:
         yield
     except _DeadlineInterrupt:
@@ -45,8 +54,11 @@ def execution_deadline(seconds: float) -> Iterator[None]:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, handler)
         remaining = previous[0] - (time.monotonic() - started)
-        if previous[0] and remaining > 0:
-            signal.setitimer(signal.ITIMER_REAL, remaining, previous[1])
+        if previous[0]:
+            if remaining > 0:
+                signal.setitimer(signal.ITIMER_REAL, remaining, previous[1])
+            else:
+                signal.raise_signal(signal.SIGALRM)
 
 
 class ResultLimitError(ValueError):

@@ -19,3 +19,15 @@ Build the worker before running. See docs/rollout.md for declarations and limits
 The reference compatible HTTP fixture has both name columns; it does not implement
 a general expand/contract repair. unsupported/add_order_note.sql remains an ADD
 COLUMN counterexample outside the rename/index/CHECK envelope.
+
+## Controlled observations
+
+- `contention.yml`: deliberately held writer, observed migration/probe wait, then release (0).
+- `contention-timeout.yml`: held through the migration lock deadline (4).
+- `benchmark.yml`: five sequential trial pairs and A/A controls; timing stays advisory.
+- `plans.yml`: separate EXPLAIN ANALYZE before/after the index (0).
+
+`fixtures/plan_orders.yml` is a deterministic selectivity fixture: two users and
+6002 orders, with one order for user 7. The other order IDs are 102 and 1000–6999,
+all owned by user 8. See [the protocol](../../docs/observations.md) for limits and
+the distinction between compatibility, observations and advisory measurements.

@@ -32,9 +32,13 @@ POSTGRES_IMAGE_PATTERN = r"^postgres:17(?:\.[0-9]+)?(?:-alpine)?(?:@sha256:[a-f0
 
 def relative_path(value: object) -> Path:
     if isinstance(value, Path):
-        return value
+        value = str(value)
     if not isinstance(value, str) or not value.strip() or any(ord(c) < 32 for c in value):
         raise ValueError("Expected a nonempty relative file path without control characters")
+    try:
+        value.encode("utf-8")
+    except UnicodeError as exc:
+        raise ValueError("File paths must contain valid UTF-8 characters") from exc
     return Path(value)
 
 
@@ -195,6 +199,28 @@ class ApplicationsSpec(InputModel):
     candidate_status: Literal["pending", "processing"] = "pending"
 
 
+class ContentionSpec(InputModel):
+    blocker: OperationSpec
+    probe: OperationSpec
+    poll_ms: int = Field(default=50, ge=10, le=1000)
+    observe_ms: int = Field(default=400, ge=50, le=10_000)
+    release: Literal["after_observation", "migration_timeout"] = "after_observation"
+
+
+class BenchmarkSpec(InputModel):
+    operations: list[str] = Field(min_length=1, max_length=5)
+    trials: int = Field(default=5, ge=1, le=5)
+    warmups: int = Field(default=50, ge=0, le=100)
+    samples: int = Field(default=200, ge=1, le=1000)
+    absolute_ms: float = Field(default=5.0, gt=0)
+    ratio: float = Field(default=1.20, gt=1)
+
+
+class PlansSpec(InputModel):
+    operations: list[str] = Field(min_length=1, max_length=5)
+    analyze: bool = False
+
+
 class RunSpec(InputModel):
     schema_version: Literal[1] = 1
     name: str = Field(min_length=1, max_length=200, pattern=r"\S")
@@ -206,6 +232,9 @@ class RunSpec(InputModel):
     seed: int = Field(default=42, ge=0, le=2**32 - 1, strict=True)
     rollout: RolloutSpec | None = None
     applications: ApplicationsSpec | None = None
+    contention: ContentionSpec | None = None
+    benchmark: BenchmarkSpec | None = None
+    plans: PlansSpec | None = None
     timeouts: Timeouts = Field(default_factory=Timeouts)
 
     @model_validator(mode="after")
@@ -217,6 +246,10 @@ class RunSpec(InputModel):
             raise ValueError("Rollout requires a candidate contract")
         if self.applications and not self.rollout:
             raise ValueError("Application probes require declared rollout phases")
+        if self.contention and not (
+            self.contention.poll_ms <= self.contention.observe_ms < self.timeouts.lock_ms
+        ):
+            raise ValueError("Contention requires poll_ms <= observe_ms < lock_ms")
         return self
 
 
@@ -392,6 +425,88 @@ class BranchEvidence(InputModel):
     data_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class ActivitySample(InputModel):
+    pid: int = Field(gt=0)
+    application_name: str
+    state: str | None
+    wait_event_type: str | None
+    wait_event: str | None
+    blockers: list[int]
+
+
+class LockFact(InputModel):
+    pid: int = Field(gt=0)
+    locktype: str
+    mode: str
+    granted: bool
+    waitstart: str | None
+    relation: int | None
+    transactionid: str | None
+
+
+class LockSample(InputModel):
+    elapsed_ms: float = Field(ge=0)
+    observed_at: str
+    overhead_ms: float = Field(ge=0)
+    activity: list[ActivitySample]
+    locks: list[LockFact]
+
+
+class ClientEvent(InputModel):
+    name: str
+    elapsed_ms: float = Field(ge=0)
+
+
+class ContentionResult(InputModel):
+    actor_pids: dict[str, int]
+    events: list[ClientEvent] = Field(default_factory=list)
+    samples: list[LockSample] = Field(default_factory=list, max_length=1000)
+    missed_polls: int = Field(default=0, ge=0)
+    observer_error: Literal["database_error"] | None = None
+    blocker: OperationResult | None = None
+    probe: OperationResult | None = None
+    blocker_released: bool = False
+    hold_ms: float = Field(default=0, ge=0)
+    poll_ms: int = Field(gt=0)
+
+
+class TimingSample(InputModel):
+    operation_id: str
+    iteration: int = Field(ge=0)
+    warmup: bool
+    elapsed_ms: float = Field(ge=0)
+    success: bool
+    error_kind: (
+        Literal[
+            "sql_error",
+            "assertion_error",
+            "result_limit",
+            "unsupported_result",
+            "operation_deadline",
+            "connection_error",
+        ]
+        | None
+    ) = None
+    sqlstate: str | None = Field(default=None, pattern=r"^[0-9A-Z]{5}$")
+
+
+class BenchmarkEvidence(InputModel):
+    samples: list[TimingSample] = Field(default_factory=list, max_length=5500)
+    environment: dict[str, Scalar]
+    schedule_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class PlanEvidence(InputModel):
+    operation_id: str
+    analyze: bool
+    success: bool
+    committed: bool = False
+    raw: dict[str, Any] | None = Field(default=None, repr=False)
+    error_kind: Literal["sql_error", "plan_limit", "invalid_plan"] | None = None
+    sqlstate: str | None = Field(default=None, pattern=r"^[0-9A-Z]{5}$")
+    settings: dict[str, Scalar]
+
+
 class Coverage(StrictModel):
     required: list[str] = Field(default_factory=list)
     completed: list[str] = Field(default_factory=list)
@@ -424,6 +539,11 @@ class RunResult(StrictModel):
     phases: list[PhaseResult] = Field(default_factory=list)
     applications: list[ApplicationResult] = Field(default_factory=list)
     evidence_levels: list[str] = Field(default_factory=lambda: ["sql_contract"])
+    contention: ContentionResult | None = None
+    benchmarks: list[dict[str, Any]] = Field(default_factory=list)
+    performance: list[dict[str, Any]] = Field(default_factory=list)
+    plans: list[dict[str, Any]] = Field(default_factory=list)
+    environment: dict[str, Scalar] = Field(default_factory=dict)
     cleanup: CleanupStatus = CleanupStatus.PENDING
 
     @model_validator(mode="after")
@@ -448,6 +568,15 @@ class RunResult(StrictModel):
             for app in self.applications
         ):
             raise ValueError("A passing verdict cannot contain failed application probes")
+        if self.contention and (
+            not self.contention.blocker_released
+            or not self.contention.samples
+            or not self.contention.blocker
+            or not self.contention.blocker.success
+            or not self.contention.probe
+            or not self.contention.probe.success
+        ):
+            raise ValueError("A passing verdict requires observed, released contention actors")
         return self
 
     @property

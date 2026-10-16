@@ -1,0 +1,10 @@
+schema_version: 1
+name: orders-check-compatible
+schema_path: schema/base.sql
+fixtures_path: fixtures/orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-v1.yml
+migrations:
+  - id: positive-amount
+    path: migrations/tighten_amount.sql

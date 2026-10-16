@@ -80,13 +80,11 @@ def catalog_verified(result: MigrationResult, document: SQLDocument) -> bool:
     columns = {table: names.copy() for table, names in before.columns.items()}
     indexes = {index.name: index for index in before.indexes}
     checks = {(check.table, check.name): check.validated for check in before.checks}
-    expected_indexes: dict[str, tuple[str, list[str], list[int]]] = {}
     for statement in document.statements:
         node = statement.node
         if statement.kind == "DropStmt":
             name = drop_index_name(node)
             indexes.pop(name, None)
-            expected_indexes.pop(name, None)
             continue
         table = node["relation"]["relname"]
         if statement.kind == "RenameStmt":
@@ -95,12 +93,15 @@ def catalog_verified(result: MigrationResult, document: SQLDocument) -> bool:
             columns[table] = [
                 node["newname"] if c == node["subname"] else c for c in columns[table]
             ]
-            for index, (relation, names, options) in list(expected_indexes.items()):
-                if relation == table:
-                    expected_indexes[index] = (
-                        relation,
-                        [node["newname"] if name == node["subname"] else name for name in names],
-                        options,
+            for name, index in indexes.items():
+                if index.table == table:
+                    indexes[name] = index.model_copy(
+                        update={
+                            "columns": [
+                                node["newname"] if c == node["subname"] else c
+                                for c in index.columns
+                            ]
+                        }
                     )
         elif statement.kind == "IndexStmt":
             elements = [item["IndexElem"] for item in node["indexParams"]]
@@ -110,7 +111,17 @@ def catalog_verified(result: MigrationResult, document: SQLDocument) -> bool:
                 nulls = element.get("nulls_ordering", "SORTBY_NULLS_DEFAULT")
                 first = nulls == "SORTBY_NULLS_FIRST" or (nulls == "SORTBY_NULLS_DEFAULT" and desc)
                 options.append(int(desc) + 2 * int(first))
-            expected_indexes[node["idxname"]] = (table, [e["name"] for e in elements], options)
+            indexes[node["idxname"]] = IndexFact(
+                name=node["idxname"],
+                table=table,
+                columns=[e["name"] for e in elements],
+                options=options,
+                method="btree",
+                unique=False,
+                valid=True,
+                ready=True,
+                definition=statement.sql,
+            )
         else:
             for item in node["cmds"]:
                 command = item["AlterTableCmd"]
@@ -124,20 +135,9 @@ def catalog_verified(result: MigrationResult, document: SQLDocument) -> bool:
                     checks.pop((table, command["name"]), None)
                 else:
                     checks[(table, command["name"])] = True
-    actual_indexes = {index.name: index for index in after.indexes}
-    expected_names = set(indexes) | set(expected_indexes)
-    if columns != after.columns or expected_names != set(actual_indexes):
-        return False
-    for name, (table, names, options) in expected_indexes.items():
-        actual = actual_indexes[name]
-        if (
-            actual.table,
-            actual.columns,
-            actual.options,
-            actual.method,
-            actual.unique,
-            actual.valid,
-            actual.ready,
-        ) != (table, names, options, "btree", False, True, True):
-            return False
-    return checks == {(check.table, check.name): check.validated for check in after.checks}
+    return (
+        columns == after.columns
+        and {name: index.model_dump(exclude={"definition"}) for name, index in indexes.items()}
+        == {index.name: index.model_dump(exclude={"definition"}) for index in after.indexes}
+        and checks == {(check.table, check.name): check.validated for check in after.checks}
+    )

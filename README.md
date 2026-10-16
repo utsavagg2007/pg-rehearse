@@ -3,11 +3,11 @@
 A Python CLI for rehearsing PostgreSQL migrations against old and new application
 queries in disposable databases.
 
-**Current stage: Steps 1–11 implemented.** Strict input preflight gates an owned
+**Current stage: Steps 1–18 implemented; Step 19 release/pilot materials prepared.** Strict input preflight gates an owned
 PostgreSQL 17 runtime and scoped workers. Each run seeds and seals a verified
 template, then uses fresh baseline, deployed and candidate branches. Migrations
 commit according to their declared transaction modes before contract probes.
-Evidence-backed terminal, JSON and Markdown reports include final cleanup status.
+Evidence-backed terminal, JSON, Markdown and static HTML reports include final cleanup status.
 The rename example exits **1** with deployed SQLSTATE **42703** and candidate data
 preserved; the additive control exits **0**. Missing evidence cannot pass.
 
@@ -88,7 +88,7 @@ uv run --locked pytest --run-docker
 uv run --locked ruff check .
 uv run --locked ruff format --check .
 uv run --locked mypy
-uv build
+uv run --locked python -m build --no-isolation
 ```
 
 Use `.venv/bin/python` as the interpreter in your editor.
@@ -136,7 +136,43 @@ pg-rehearse run --config examples/orders/check-tightening.yml        # expected 
 pg-rehearse run --config examples/orders/index-drop.yml              # expected 0
 ```
 
-The next milestone is controlled contention and lock observation (feature 12).
+Optional controlled contention, sequential advisory benchmarks and isolated query plans
+are described in [docs/observations.md](docs/observations.md):
+
+```sh
+pg-rehearse run --config examples/orders/contention.yml          # expected 0
+pg-rehearse run --config examples/orders/contention-timeout.yml  # expected 4
+pg-rehearse run --config examples/orders/benchmark.yml           # compatibility 0; advisory timing
+pg-rehearse run --config examples/orders/plans.yml               # expected 0
+```
+
+## Starter, demo and saved reports
+
+After preparing Docker and building the matching worker image:
+
+```sh
+pg-rehearse init my-rehearsal
+pg-rehearse validate --config my-rehearsal/rehearsal.yml
+pg-rehearse demo  # expected exit 1: real incompatible rename
+pg-rehearse run --config my-rehearsal/control.yml  # expected exit 0
+pg-rehearse report .pg-rehearse/runs/<run-id>/report.json --format html
+pg-rehearse clean --run-id <run-id>
+```
+
+Use the printed run ID. Init refuses existing destinations. Every rehearsal saves
+an escaped, self-contained `report.html` alongside JSON and Markdown. Saved report
+viewing requires no Docker and retains the original rehearsal exit code. Clean
+recovers one inactive owned run and keeps its reports. See
+[docs/onboarding.md](docs/onboarding.md) for exact behavior.
+
+CI checks real rehearsals and both installed distributions, then retains selected
+reports even on failure. Run `make package-check` after preparing Docker and the
+worker; [docs/ci.md](docs/ci.md) describes the locked builds and artifact boundary.
+The labeled matrix and lifecycle fault audit are implemented (feature 18).
+Run `make evaluate` with prepared images. Release notes, upgrade guidance and an
+independent pilot protocol are prepared (feature 19); actual outside feedback is
+still required. Start with [RUNNING.md](RUNNING.md) for the complete rehearsal flow;
+see [docs/audit.md](docs/audit.md) and [docs/release.md](docs/release.md).
 
 ## Project references
 

@@ -1,0 +1,28 @@
+schema_version: 1
+name: orders-contention
+postgres_image: postgres:17
+schema_path: schema/base.sql
+fixtures_path: fixtures/orders.yml
+seed: 42
+contracts:
+  deployed: contracts/deployed-v1.yml
+migrations:
+- id: add-order-user-index
+  path: migrations/create_order_user_index.sql
+  transaction: transaction
+contention:
+  blocker:
+    id: hold-order-write
+    sql: UPDATE orders SET amount_cents=amount_cents WHERE id=%s;
+    parameters:
+    - 101
+    expect:
+      row_count: 1
+  probe:
+    id: queued-writer
+    sql: UPDATE orders SET amount_cents=amount_cents WHERE id=%s;
+    parameters:
+    - 102
+    expect:
+      row_count: 1
+  release: after_observation

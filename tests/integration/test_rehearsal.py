@@ -351,21 +351,27 @@ def test_worker_crash_preserves_partial_reports_and_cleans_all_branches(
     clean(docker_client, directory)
 
 
+@pytest.mark.parametrize("format", ["json", "markdown", "html"])
 def test_report_write_failure_still_finishes_cleanup(
     docker_client: DockerClient,
     rehearsal_project: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    format: str,
 ) -> None:
     def fail(*args: Any) -> None:
         raise OSError("injected report failure")
 
-    monkeypatch.setattr("pg_rehearse.orchestrator.write_markdown", fail)
+    monkeypatch.setattr(f"pg_rehearse.orchestrator.write_{format}", fail)
     with pytest.raises(RuntimeLifecycleError, match="Cannot save final reports"):
         run_rehearsal(rehearsal_project / "control.yml", state_dir=tmp_path / "runs")
     directory = next((tmp_path / "runs").iterdir())
-    saved = json.loads((directory / "report.json").read_text())
-    assert saved["cleanup"] == "complete" and saved["verdict"] == "inconclusive"
+    extension = {"json": "json", "markdown": "md", "html": "html"}[format]
+    assert not (directory / f"report.{extension}").exists()
+    for other in {"json", "md", "html"} - {extension}:
+        surviving = (directory / f"report.{other}").read_text()
+        assert "A final report could not be saved." in surviving
+        assert "infrastructure_error" in surviving and "inconclusive" in surviving
     clean(docker_client, directory)
 
 
@@ -397,11 +403,14 @@ print(evidence.model_dump_json())
     clean(docker_client, directory)
 
 
+@pytest.mark.parametrize("filename,exit_code", [("control.yml", 3), ("rehearsal.yml", 1)])
 def test_cleanup_failure_is_in_final_reports_and_recoverable(
     docker_client: DockerClient,
     rehearsal_project: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    exit_code: int,
 ) -> None:
     from docker.errors import APIError
     from docker.models.containers import Container
@@ -420,10 +429,10 @@ def test_cleanup_failure_is_in_final_reports_and_recoverable(
         with monkeypatch.context() as patch:
             patch.setattr(Container, "remove", refuse)
             result, directory = run_rehearsal(
-                rehearsal_project / "control.yml", state_dir=tmp_path / "runs"
+                rehearsal_project / filename, state_dir=tmp_path / "runs"
             )
-        assert result.exit_code == 3 and result.cleanup == CleanupStatus.FAILED
-        assert result.verdict.value == "inconclusive"
+        assert result.exit_code == exit_code and result.cleanup == CleanupStatus.FAILED
+        assert result.verdict.value == ("fail" if exit_code == 1 else "inconclusive")
         assert json.loads((directory / "report.json").read_text())["cleanup"] == "failed"
         assert "cleanup: failed" in (directory / "report.md").read_text()
     finally:

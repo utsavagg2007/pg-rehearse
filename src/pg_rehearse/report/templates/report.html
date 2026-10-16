@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>$title</title>
+<style>
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #19283b; background: #f3f5f8; }
+* { box-sizing: border-box; }
+body { margin: 0; line-height: 1.55; }
+a { color: #174f9c; text-underline-offset: .2em; }
+a:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 3px solid #a85c00; outline-offset: 4px; }
+.skip { position: absolute; top: -5rem; background: white; padding: 1rem; }
+.skip:focus { top: 0; }
+header, main, footer { max-width: 1120px; margin: auto; padding: 2rem; }
+header { border-bottom: 1px solid #ccd4df; }
+.eyebrow { margin: 0; font-size: .8rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+h1 { font-size: clamp(1.8rem, 5vw, 2.8rem); line-height: 1.2; margin: .5rem 0; }
+h2 { font-size: 1.4rem; margin-top: 0; }
+h3 { font-size: 1.05rem; }
+.run { font-family: ui-monospace, monospace; overflow-wrap: anywhere; color: #46576c; }
+nav { display: flex; flex-wrap: wrap; gap: .5rem 1.3rem; margin-top: 1.5rem; }
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 0 0 2rem; }
+.card, section { background: #fff; border: 1px solid #d4dce6; border-radius: .6rem; }
+.card { padding: 1rem; }
+.card dt { font-size: .8rem; color: #46576c; text-transform: uppercase; font-weight: 700; }
+.card dd { margin: .3rem 0 0; font-size: 1.2rem; font-weight: 700; }
+section { padding: 1.5rem; margin-bottom: 1.5rem; }
+.badge { display: inline-block; border-radius: .25rem; padding: .15rem .5rem; border: 1px solid currentColor; }
+.pass { color: #16623a; background: #edf9f1; }
+.fail { color: #a2232d; background: #fff0f0; }
+.inconclusive { color: #805000; background: #fff7e5; }
+p, td, dd, li { overflow-wrap: anywhere; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+caption { text-align: left; font-weight: 600; margin-bottom: .7rem; }
+th, td { padding: .65rem; text-align: left; vertical-align: top; border-bottom: 1px solid #e0e5ed; }
+th { background: #f3f5f8; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; background: #f5f7fa; padding: 1rem; border-radius: .3rem; }
+summary { cursor: pointer; padding: .5rem 0; font-weight: 600; }
+.note { color: #46576c; }
+footer { font-size: .85rem; color: #46576c; padding-top: 0; }
+@media (max-width: 650px) { header, main, footer { padding: 1rem; } .cards { grid-template-columns: 1fr 1fr; } section { padding: 1rem; } }
+@media print { body { background: white; color: black; } nav, .skip { display: none; } section, .card { border-color: #888; } header, main, footer { max-width: none; padding: .5rem; } details { break-inside: avoid; } a { color: black; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to results</a>
+<header>
+<p class="eyebrow">pg-rehearse / PostgreSQL migration evidence</p>
+<h1>$heading</h1>
+<p class="run">Run $run_id</p>
+<p>$scope</p>
+<nav aria-label="Report sections">$navigation</nav>
+</header>
+<main id="main">$content</main>
+<footer>Saved evidence from disposable PostgreSQL. Compatibility, completion, coverage and cleanup are separate outcomes. Advisory timings and diagnostic plans do not certify production performance.</footer>
+</body>
+</html>

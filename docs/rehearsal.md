@@ -123,14 +123,31 @@ Run files live under `.pg-rehearse/runs/<run-id>/`:
 - `seed-evidence.json`: seed verification and scoped role checks.
 - `worker-evidence.json`: baseline branch evidence (also the existing baseline API receipt).
 - `post_deployed-evidence.json`, `post_candidate-evidence.json`: completed branch receipts.
-- `report.json`, `report.md`: the same final RunResult used by terminal output.
+- `report.json`, `report.md`, `report.html`: the same final RunResult used by terminal output.
 
 Files use mode 0600 inside a private run directory. Reports are atomically replaced;
 Markdown escapes text and fences recorded evidence. Credentials and raw server
 exceptions are excluded. SQL and expected/actual fixture values are intentional
 report evidence, so keep reports private if the supplied fixtures are sensitive.
-A failed report write returns 3; an updated JSON error receipt is attempted when
-storage remains available. Filesystem loss can prevent reports, leaving existing
+A failed report write returns 3; all formats are retried with an updated infrastructure
+outcome, and an unrecoverable stale format is removed when storage permits. Filesystem loss can prevent reports, leaving existing
 manifest/worker receipts for diagnosis. Interrupted cleanup can be retried with
 `pg-rehearse recover --manifest <path>`; existing reports describe the original run,
 while the recovered manifest records the later cleanup attempt.
+
+HTML is self-contained and script-free, escapes all data, embeds no remote assets,
+and includes findings, coverage, phases, SQL/HTTP assertions, lock observations,
+advisory timing samples, sanitized plan comparisons and environment identities.
+Native disclosure controls, table captions, visible keyboard focus and print styles
+keep the static evidence usable. Private raw plan trees stay in worker receipts.
+Rendering a saved JSON with `pg-rehearse report <path> --format html` does not rerun
+or recertify the evidence; it retains the saved exit code. See [onboarding.md](onboarding.md).
+
+## Optional observation branches
+
+[Steps 12–14](observations.md) add a required controlled-contention branch when
+selected, sequential advisory benchmark trial arms and separate plan clones.
+Compatibility coverage includes required wait/release observations. Performance
+sample sufficiency/noise and plan availability are reported in their own fields;
+advisory insufficiency does not claim a performance pass. Informational findings
+and advisory warnings can accompany complete passing compatibility evidence.

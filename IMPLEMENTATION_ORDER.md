@@ -1,7 +1,8 @@
 # Implementation order
 
-Updated: 2026-10-16. Features 1–11 are implemented and verified locally. Features 12–19
-remain pending or partial. Follow this sequence from the shared conversation.
+Updated: 2026-10-16. Features 1–18 are implemented. Step 19 release/pilot materials
+are prepared, but independent feedback remains pending. The CI workflow is
+configured; remote execution is unverified. Follow this sequence from the shared conversation.
 Update `PROGRESS.md` as each acceptance criterion is actually verified.
 
 ## 1. Docker provisioning, ownership, cleanup, and recovery
@@ -177,6 +178,8 @@ Unsupported variants cannot receive a passing verdict.
 
 ## 12. Controlled contention and lock observation
 
+Status: implemented and verified locally. See `docs/observations.md` and `PROGRESS.md`.
+
 Modules: `observe/locks.py`, `analysis/locks.py`.
 
 - Introduce reproducible blocker sessions and observe waits from a separate connection.
@@ -187,6 +190,8 @@ Acceptance: demonstrate a reproducible lock wait and bounded timeout; distinguis
 unobserved locks from observed absence; clean up blockers on every failure path.
 
 ## 13. Repeatable advisory performance measurements
+
+Status: implemented and verified locally. See `docs/observations.md` and `PROGRESS.md`.
 
 Modules: `observe/timings.py`, `benchmarks/runner.py`, `benchmarks/statistics.py`,
 `benchmarks/controls.py`, `analysis/performance.py`.
@@ -200,6 +205,8 @@ evidence cannot become a definitive regression or improvement claim.
 
 ## 14. Query-plan capture and comparison
 
+Status: implemented and verified locally. See `docs/observations.md` and `PROGRESS.md`.
+
 Modules: `observe/plans.py`, `analysis/plans.py`.
 
 - Capture structured plans before and after migration; retain original evidence.
@@ -210,6 +217,9 @@ Acceptance: a reproducible index case shows explainable plan changes; unavailabl
 plans remain explicit; capture does not corrupt other experiment branches.
 
 ## 15. Escaped static HTML reports
+
+Status: implemented and locally verified with hostile-input, combined real evidence
+and report-failure checks. Browser visual QA is unverified. See `PROGRESS.md`.
 
 Modules: `report/html.py`, `report/templates/`.
 
@@ -222,6 +232,10 @@ and hostile input is displayed as text rather than executed.
 
 ## 16. CLI onboarding: init, demo, report, and clean
 
+Status: implemented and verified against real PostgreSQL, including active-run
+refusal, unrelated-resource preservation and installed package starters.
+See `docs/onboarding.md` and `PROGRESS.md`.
+
 Modules: `onboarding/init.py`, `onboarding/demo.py`, `onboarding/clean.py`, `cli.py`.
 
 - Create starter inputs without overwriting existing files.
@@ -232,6 +246,10 @@ Acceptance: a new developer can initialize, validate, run, view, and clean a rea
 rehearsal; existing user files and unrelated Docker resources remain protected.
 
 ## 17. CI integration and reproducible packaging
+
+Status: implemented. Both distributions built/rebuilt identically and passed real
+installed CLI checks outside the checkout. CI commands are locally verified;
+GitHub-hosted execution remains unverified. See `docs/ci.md` and `PROGRESS.md`.
 
 Modules: `.github/workflows/ci.yml`, `pyproject.toml`, `uv.lock`.
 
@@ -244,6 +262,10 @@ publish evidence as job artifacts, and install working wheel/sdist distributions
 
 ## 18. Labeled evaluation and failure-path audit
 
+Status: implemented. The seven-case matrix matched actual outcomes and the complete
+444-case regression passed. See `evaluation/README.md`, `docs/audit.md`
+and `PROGRESS.md` for boundaries and actual verification.
+
 Modules: `evaluation/`, `tests/integration/`, `tests/e2e/`.
 
 - Add labeled compatible, incompatible, unsupported, and inconclusive cases.
@@ -254,6 +276,11 @@ Acceptance: labels match real evidence, every critical failure path is exercised
 and incomplete or unsupported runs cannot silently pass.
 
 ## 19. External developer pilot and release preparation
+
+Status: release preparation implemented in `CHANGELOG.md`, `RUNNING.md`,
+`docs/release.md` and `docs/pilot.md`. Actual independent developer sessions and
+feedback remain pending; Step 19 acceptance is not complete. No publication or
+participant communication was performed.
 
 Modules: documentation, packaging, release notes, pilot records.
 

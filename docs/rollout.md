@@ -58,7 +58,8 @@ verified baseline, migration commit or completed committed-write sequence. Missi
 required phases or commits cannot pass. Individual query failures roll back before
 another independent probe. There is no fabricated claim of traffic during DDL:
 these tests establish before/after barriers and live old sessions, while controlled
-in-migration contention and observations remain feature 12.
+in-migration contention is a separate opt-in Step 12 experiment.
+See [observations.md](observations.md) for locks, advisory timings and diagnostic plans.
 
 ## Maintained HTTP reference application
 

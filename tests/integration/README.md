@@ -8,14 +8,15 @@ make worker-image
 uv run --locked pytest --run-docker
 ```
 
-There are 97 real cases across ten files, plus seven labeled e2e cases:
+There are 101 real cases across eleven files, plus seven labeled e2e cases:
 
-- Step 1: 13 lifecycle/fault cases in `test_runtime.py` and `test_runtime_faults.py`.
+- Step 1: fifteen lifecycle/fault cases in `test_runtime.py` and `test_runtime_faults.py`.
 - Step 2: four accepted rename, ordinary/concurrent index and CHECK cases in `test_preflight.py`.
 - Step 3: fourteen isolated-worker cases in `test_worker.py`.
 - Steps 4–5: fourteen baseline/contract cases in `test_baseline.py`.
+- Numeric fixtures/defaults: one exact readback/clone/contract case in `test_numeric_inputs.py`.
 - Steps 6–8/15/18: sixteen complete rehearsal/clone/report cases in `test_rehearsal.py`.
-- Steps 9–11: seventeen rollout/application/catalog cases in `test_rollout.py`.
+- Steps 9–11: eighteen rollout/application/catalog cases in `test_rollout.py`.
 
 Worker cases use the production image and PostgreSQL for actual role grants and
 permission denials, nonroot execution, isolation settings, statement/lock/wall
@@ -38,13 +39,17 @@ receipt rejection, dependent-read skips, CHECK validation/drop/re-add and invali
 concurrent index remnants. Actual child process crashes, malformed HTTP responses
 and request deadlines remain distinct from SQL compatibility failures.
 
-Steps 12–14 add thirteen observation cases: sampled migration/probe blocking and
+Steps 12–14 add fifteen observation cases: sampled migration/probe blocking and
 timeout; observer gaps and absent conflicts; natural index plan changes and guarded
 write plans; five repeated trial pairs with raw samples and unchanged A/A controls;
 committed-write reset and retained timeouts; refusal to drop a changed ownership
 marker; composition with real HTTP rollout; and partial sample retention after a lost
 measurement connection. Receipts reject forged actors,
 barriers, samples, settings and plan execution/commit claims.
+Plan connection tests close a real connection and terminate its PostgreSQL backend;
+both must retain reports, clean owned resources and report infrastructure failure.
+Catalog tests anchor column inventories to baseline and prior renames, retain index
+and CHECK facts between steps, and reject absent or contradictory receipt facts.
 
 Steps 15–16 add HTML to the combined observation flow, both Markdown/HTML write
 failure fallbacks, and two real onboarding cases in `test_onboarding.py`: a freshly

@@ -23,10 +23,6 @@ class UnsupportedInputError(ConfigurationError):
     exit_code = ExitCode.INCONCLUSIVE
 
 
-class FeatureNotImplementedError(RuntimeError):
-    """A planned feature must never silently produce a passing result."""
-
-
 class RuntimeLifecycleError(RuntimeError):
     """A disposable runtime could not finish its infrastructure lifecycle."""
 

@@ -14,6 +14,7 @@ from pg_rehearse.fixtures.template import template_identity
 from pg_rehearse.models import (
     BaselineEvidence,
     CatalogState,
+    CheckFact,
     CleanupStatus,
     Coverage,
     IndexFact,
@@ -116,10 +117,18 @@ def recorded(rehearsal_project: Path):
                     executed=len(document.statements),
                     committed=True,
                     catalog_before=CatalogState(
-                        columns={"orders": ["user_id"]}, indexes=[], checks=[]
+                        columns={
+                            "users": ["id", "name", "email"],
+                            "orders": ["id", "user_id", "status", "amount_cents"],
+                        },
+                        indexes=[],
+                        checks=[],
                     ),
                     catalog_after=CatalogState(
-                        columns={"orders": ["user_id"]},
+                        columns={
+                            "users": ["id", "name", "email"],
+                            "orders": ["id", "user_id", "status", "amount_cents"],
+                        },
                         checks=[],
                         indexes=[
                             IndexFact(
@@ -367,3 +376,36 @@ def test_missing_or_wrong_catalog_cannot_pass(recorded, change: str) -> None:
     result = analyze(*recorded)
     assert result.exit_code == 4
     assert any(check.startswith("catalog/") for check in result.coverage.missing)
+
+
+@pytest.mark.parametrize(
+    "change", ["empty", "table", "column", "order", "extra", "duplicate_index", "duplicate_check"]
+)
+def test_incomplete_or_conflicting_catalog_inventory_cannot_pass(recorded, change: str) -> None:
+    step = recorded[2].experiments[-1].migrations[0]
+    for state in (step.catalog_before, step.catalog_after):
+        if change == "empty":
+            state.columns = {}
+        elif change == "table":
+            del state.columns["users"]
+        elif change == "column":
+            state.columns["users"].remove("email")
+        elif change == "order":
+            state.columns["users"].reverse()
+        elif change == "extra":
+            state.columns["extra"] = ["id"]
+        elif change == "duplicate_check":
+            state.checks = [
+                CheckFact(
+                    name="positive", table="orders", validated=value, definition="CHECK(id>0)"
+                )
+                for value in (False, True)
+            ]
+    if change == "duplicate_index":
+        step.catalog_after.indexes.insert(
+            0, step.catalog_after.indexes[0].model_copy(update={"valid": False})
+        )
+    result = analyze(*recorded)
+    assert result.exit_code == 4 and result.verdict.value == "inconclusive"
+    assert any(check.startswith("catalog/") for check in result.coverage.missing)
+    assert any(finding.rule_id == "CATALOG_EVIDENCE_MISSING" for finding in result.findings)

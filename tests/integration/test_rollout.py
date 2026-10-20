@@ -425,3 +425,70 @@ def test_index_and_rename_in_one_step_have_verified_final_catalog(
     )
     assert index.columns == ["full_name"] and index.valid
     clean(docker_client, directory)
+
+
+def test_catalog_inventory_tracks_prior_renames_and_rejects_forged_real_receipts(
+    docker_client: DockerClient,
+    rehearsal_project: Path,
+    tmp_path: Path,
+) -> None:
+    path = rehearsal_project / "control.yml"
+    data = yaml.safe_load(path.read_text())
+    for filename, old, new in (
+        ("rename-out", "name", "full_name"),
+        ("rename-back", "full_name", "name"),
+    ):
+        (rehearsal_project / f"migrations/{filename}.sql").write_text(
+            f"ALTER TABLE users RENAME COLUMN {old} TO {new};"
+        )
+    data["migrations"] += [
+        {"id": name, "path": f"migrations/{name}.sql"} for name in ("rename-out", "rename-back")
+    ]
+    path.write_text(yaml.safe_dump(data))
+    result, directory = run_rehearsal(path, state_dir=tmp_path / "runs")
+    assert result.exit_code == 0 and not result.coverage.missing
+    loaded = load_config(path)
+    inputs = worker_inputs(loaded)
+    manifest = ManifestStore(directory / "manifest.json").load()
+    evidence = RehearsalEvidence(
+        seed=WorkerEvidence.model_validate_json((directory / "seed-evidence.json").read_bytes()),
+        template=result.template,
+        experiments=[
+            WorkerEvidence.model_validate_json((directory / name).read_bytes())
+            for name in ("worker-evidence.json", "post_deployed-evidence.json")
+        ],
+    )
+    assert analyze(loaded, inputs, evidence, manifest).exit_code == 0
+    for change in (
+        "empty",
+        "table",
+        "duplicate_index",
+        "duplicate_check",
+        "lost_index",
+        "lost_check",
+    ):
+        forged = evidence.model_copy(deep=True)
+        step = forged.experiments[-1].migrations[-1]
+        if change in {"empty", "table"}:
+            for state in (step.catalog_before, step.catalog_after):
+                if change == "empty":
+                    state.columns = {}
+                else:
+                    del state.columns["users"]
+        elif change == "duplicate_index":
+            index = step.catalog_after.indexes[0]
+            step.catalog_after.indexes.insert(0, index.model_copy(update={"valid": False}))
+        elif change == "duplicate_check":
+            check = step.catalog_after.checks[0]
+            step.catalog_after.checks.insert(0, check.model_copy(update={"validated": False}))
+        else:
+            for state in (step.catalog_before, step.catalog_after):
+                if change == "lost_index":
+                    state.indexes = [i for i in state.indexes if i.name != "orders_user_id_idx"]
+                else:
+                    state.checks = []
+        rejected = analyze(loaded, inputs, forged, manifest)
+        assert rejected.exit_code == 4 and rejected.verdict.value == "inconclusive"
+        assert any(check.startswith("catalog/") for check in rejected.coverage.missing)
+        assert any(f.rule_id == "CATALOG_EVIDENCE_MISSING" for f in rejected.findings)
+    clean(docker_client, directory)

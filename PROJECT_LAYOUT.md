@@ -51,8 +51,8 @@ pg-rehearse/
 │   ├── unsupported/               Rejected ADD COLUMN counterexample
 │   └── apps/                      Independently runnable old/new reference HTTP applications
 ├── tests/
-│   ├── unit/                      340 unit cases across eighteen files
-│   ├── integration/               97 Docker/PostgreSQL cases across ten files
+│   ├── unit/                      405 unit cases across twenty files
+│   ├── integration/               101 Docker/PostgreSQL cases across eleven files
 │   └── e2e/                       Seven labeled cases, including zero-allocation unsupported input
 ├── docker/worker.Dockerfile        Locked nonroot worker image build
 ├── scripts/check_distributions.py Installed wheel/sdist isolation, reproducibility and real CLI checks

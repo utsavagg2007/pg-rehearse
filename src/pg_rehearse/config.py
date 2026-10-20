@@ -143,6 +143,10 @@ def load_yaml(path: Path) -> dict[str, Any]:
 def parse_yaml(text: str, path: Path) -> dict[str, Any]:
     try:
         data = yaml.load(text, Loader=UniqueKeyLoader)
+    except ConfigurationError:
+        raise
+    except ValueError as exc:
+        raise ConfigurationError(f"Cannot read {path}: invalid YAML value") from exc
     except (RecursionError, yaml.YAMLError) as exc:
         raise ConfigurationError(f"Cannot read {path}: {exc}") from exc
     if not isinstance(data, dict) or any(not isinstance(key, str) for key in data):

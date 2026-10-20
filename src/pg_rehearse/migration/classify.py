@@ -223,7 +223,7 @@ class SchemaCatalog:
     indexes: set[str] = field(default_factory=set)
 
 
-def literal(node: dict[str, Any], statement: SQLStatement) -> Scalar:
+def literal(node: dict[str, Any], statement: SQLStatement, data_type: str) -> Scalar:
     if set(node) != {"A_Const"}:
         statement.reject("Baseline defaults must be scalar literals")
     value = node["A_Const"]
@@ -237,6 +237,16 @@ def literal(node: dict[str, Any], statement: SQLStatement) -> Scalar:
     ):
         if key in value:
             result: Scalar = value[key].get(field_name, default)
+            if key == "fval" and isinstance(result, str):
+                if data_type == "float8":
+                    return float(result)
+                if data_type in {"int2", "int4", "int8"} and result.lstrip("-").isdigit():
+                    try:
+                        return int(result)
+                    except ValueError:
+                        statement.reject(
+                            "Integer default exceeds supported bounds", unsupported=False
+                        )
             return result
     statement.reject("Unsupported default literal")
     return None
@@ -270,7 +280,9 @@ def _constraint(
         definition = table.columns[column]
         if kind == "CONSTR_DEFAULT":
             table.columns[column] = replace(
-                definition, has_default=True, default=literal(constraint["raw_expr"], statement)
+                definition,
+                has_default=True,
+                default=literal(constraint["raw_expr"], statement, definition.data_type),
             )
         else:
             table.columns[column] = replace(definition, nullable=kind == "CONSTR_NULL")

@@ -1,11 +1,15 @@
 """Worker catalog capture and pure checks for the bounded migration families."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 
+from pg_rehearse.migration.classify import baseline_catalog
 from pg_rehearse.migration.preflight import SQLDocument
 from pg_rehearse.models import CatalogState, CheckFact, IndexFact, MigrationResult
+
+if TYPE_CHECKING:
+    from pg_rehearse.config import LoadedConfig
 
 
 def capture_catalog(connection: psycopg.Connection[tuple[object, ...]]) -> CatalogState:
@@ -70,9 +74,44 @@ def drop_index_name(node: dict[str, Any]) -> str:
     return str(node["objects"][0]["List"]["items"][-1]["String"]["sval"])
 
 
-def catalog_verified(result: MigrationResult, document: SQLDocument) -> bool:
+def catalog_verifications(
+    loaded: "LoadedConfig", results: list[MigrationResult]
+) -> dict[str, bool]:
+    columns = {
+        name: list(table.columns)
+        for name, table in baseline_catalog(loaded.schema_sql).tables.items()
+    }
+    verified = {}
+    previous = None
+    for position, (result, document) in enumerate(zip(results, loaded.migration_sql, strict=False)):
+        verified[result.step_id] = catalog_verified(result, document, columns) and (
+            position == 0 or (previous is not None and result.catalog_before == previous)
+        )
+        previous = result.catalog_after
+        if result.committed:
+            for statement in document.statements:
+                if statement.kind == "RenameStmt":
+                    node = statement.node
+                    table = node["relation"]["relname"]
+                    columns[table] = [
+                        node["newname"] if name == node["subname"] else name
+                        for name in columns[table]
+                    ]
+    return verified
+
+
+def catalog_verified(
+    result: MigrationResult, document: SQLDocument, expected_columns: dict[str, list[str]]
+) -> bool:
     before, after = result.catalog_before, result.catalog_after
     if before is None or after is None:
+        return False
+    try:
+        for state in (before, after):
+            CatalogState.model_validate(state.model_dump())
+    except ValueError:
+        return False
+    if before.columns != expected_columns:
         return False
     if not result.committed:
         return True  # Observed failure remnants, not evidence of successful DDL.

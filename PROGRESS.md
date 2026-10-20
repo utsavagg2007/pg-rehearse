@@ -1,20 +1,58 @@
 # Implementation progress
 
-Updated: 2026-10-16 (Asia/Kolkata).
+Updated: 2026-10-17 (Asia/Kolkata).
 
 ## Current checkpoint
 
-**Steps 1–18 are implemented and locally verified.** The complete frozen-source
-suite passed **444 tests in 418.72s**: 340 unit cases plus 104 Docker-enabled cases
-(103 real PostgreSQL cases and one unsupported preflight refusal).
-The standalone labeled matrix matched **7/7**, with zero false passes/failures in
-that fixed set. Step 19 release notes, upgrade/release checklist, pilot protocol and
-execution guide are prepared. The user requested leaving independent pilot
-acceptance pending because no external feedback is available. Final distribution
-installation checks passed for both wheel and rebuilt sdist outside the checkout.
-Lint, formatting, strict typing and the offline 45-package lock check pass. Final
-managed Docker inventory is zero containers and zero networks. Remote CI and
-browser visual QA remain unverified.
+**Steps 1–18 and all six reported audit fixes are implemented and locally verified.**
+The frozen-source suite passed **513 tests in 430.66s**: 405 unit cases and 108
+Docker-enabled cases (107 real PostgreSQL cases and one unsupported preflight
+refusal). All seven labeled cases passed within that suite; the previous standalone
+matrix also matched 7/7. Completion, verdict, coverage and cleanup remain separate.
+Lint, formatting, strict typing and the offline 45-package lock check pass.
+
+Step 19 release/pilot preparation and the execution guide remain complete.
+Independent pilot acceptance stays pending at the user's request because no external
+feedback is available. Remote CI/Python matrix and browser visual QA remain
+unverified. Wheel/sdist rebuild and isolated installed CLI checks pass. Final
+managed Docker inventory is zero containers and zero networks.
+
+## Audit fixes and verification — 2026-10-17
+
+- Anchor catalog column inventories to accepted schema and prior committed renames;
+  reject duplicate identities, missing object references and disappearing index/CHECK
+  facts between adjacent migration snapshots. Missing evidence cannot pass.
+- Propagate closed/broken EXPLAIN connections to worker infrastructure failure while
+  retaining ordinary SQL plan errors as unavailable diagnostics.
+- Normalize positive-exponent and signed-zero numeric fixtures exactly, preserving
+  precision, scale and existing negative-exponent representations.
+- Interpret native numeric defaults using the declared column type, retaining bounds
+  and rejection of unsupported casts or fixture coercions.
+- Convert YAML integer-construction ValueError into a bounded input error before
+  allocation, preserving existing custom error types and explanations.
+- Remove the unused FeatureNotImplementedError definition after checking all callers.
+
+Added 65 unit and four real PostgreSQL cases. Updated PROJECT_LAYOUT.md and the
+integration guide. No dependency or execution boundary changed. Independent code
+review found no remaining blocking issue in this fix scope; this is not a guarantee
+that every possible bug has been excluded.
+
+| Check | Actual outcome |
+| --- | --- |
+| Locked unit suite | 405 passed in 2.79s |
+| Focused PostgreSQL regressions | 7 passed in 48.09s; `.pg-rehearse/audit-fixes-focused.xml` |
+| Complete frozen-source suite | 513 passed in 430.66s; `.pg-rehearse/audit-fixes-test-results.xml` |
+| Lint / formatting / strict typing | Pass; 135 formatted Python files and 66 typed source files |
+| Offline lock check | Pass; 45 packages, no dependency change |
+| Worker rebuild | Pass; `sha256:6b902e3410792ee558630b4a770fb74f68664e7368b8dc8e532f88affd8e9755` |
+| Wheel/sdist and isolated installed CLI | Pass; identical rebuilt wheels, both installed outside the checkout; rename exits 1 and control exits 0 with complete evidence/cleanup |
+| Final managed Docker inventory | Zero managed containers and zero managed networks; read-only ownership-label filter |
+
+Installed distribution evidence:
+`.pg-rehearse/audit-fixes-package-check/{summary.md,packaging.log}`. Verified wheel:
+`ee1a07827b822f7ec3d5da18d99b5859e7fd0afda92c315449565ee1dde92a6c`.
+All six audit fixes are complete. Next: obtain independent pilot feedback when the
+user is ready and observe remote CI; neither result is inferred from local tests.
 
 ## Steps 18–19 implementation and verification log
 

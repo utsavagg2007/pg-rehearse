@@ -363,6 +363,22 @@ class CatalogState(InputModel):
     indexes: list[IndexFact]
     checks: list[CheckFact]
 
+    @model_validator(mode="after")
+    def consistent_inventory(self) -> Self:
+        if (
+            any(len(names) != len(set(names)) for names in self.columns.values())
+            or len(self.indexes) != len({index.name for index in self.indexes})
+            or len(self.checks) != len({(check.table, check.name) for check in self.checks})
+        ):
+            raise ValueError("Duplicate catalog identities")
+        if any(
+            index.table not in self.columns
+            or not set(index.columns).issubset(self.columns[index.table])
+            for index in self.indexes
+        ) or any(check.table not in self.columns for check in self.checks):
+            raise ValueError("Catalog objects reference missing tables or columns")
+        return self
+
 
 class PhaseResult(InputModel):
     completion: Literal["complete", "partial"]

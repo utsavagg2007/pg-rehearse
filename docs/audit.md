@@ -5,6 +5,14 @@ Reviewed the connected implementation and tests for all roadmap steps on
 possible production failure has been excluded. Actual test/build outcomes are in
 `../PROGRESS.md`; the labeled and fault matrix is in `../evaluation/README.md`.
 
+The 2026-10-17 follow-up fixes six reported findings: incomplete/duplicate catalog
+facts, lost plan connections, exponent/signed-zero numeric readback, native numeric
+defaults, uncaught oversized YAML integers and an unused exception. Catalog column
+inventories now follow the accepted baseline and prior renames; adjacent snapshots
+must also preserve all observed index/CHECK facts. Focused regressions include real
+PostgreSQL connection termination, exact numeric/default readback and forged saved
+catalog receipts. Verification results are recorded in `../PROGRESS.md`.
+
 | Steps | Code inspected | Preserved boundary / review result |
 | --- | --- | --- |
 | 1 | runtime/docker, manifest, cleanup; orchestrator | Exact ownership/intent cleanup retained; manifest reads bounded; first cleanup signal now finishes teardown |

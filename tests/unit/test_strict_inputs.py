@@ -7,8 +7,8 @@ import yaml
 from typer.testing import CliRunner
 
 from pg_rehearse.cli import app
-from pg_rehearse.config import load_config, load_yaml, read_snapshot, resolve_input
-from pg_rehearse.errors import ConfigurationError
+from pg_rehearse.config import load_config, load_yaml, parse_yaml, read_snapshot, resolve_input
+from pg_rehearse.errors import ConfigurationError, UnsupportedInputError
 from pg_rehearse.orchestrator import validated_environment
 
 
@@ -76,6 +76,43 @@ def test_alias_merge_and_nesting_are_bounded(tmp_path: Path, content: str) -> No
     path.write_text(content)
     with pytest.raises(ConfigurationError):
         load_yaml(path)
+
+
+@pytest.mark.parametrize("error_type", [ConfigurationError, UnsupportedInputError])
+def test_yaml_keeps_existing_input_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_type: type[ConfigurationError]
+) -> None:
+    error = error_type("Specific input explanation")
+    monkeypatch.setattr("pg_rehearse.config.yaml.load", MagicMock(side_effect=error))
+    with pytest.raises(error_type) as raised:
+        parse_yaml("name: example", tmp_path / "input.yml")
+    assert raised.value is error
+
+
+def test_duplicate_yaml_key_explanation_is_preserved(tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match="Duplicate YAML key: 'name'"):
+        parse_yaml("name: first\nname: second\n", tmp_path / "input.yml")
+
+
+@pytest.mark.parametrize("command", ["validate", "run"])
+def test_oversized_yaml_integer_is_invalid_before_allocation(
+    rehearsal_project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    path = rehearsal_project / "rehearsal.yml"
+    number = "9" * 5000
+    path.write_text(path.read_text().replace("seed: 42", f"seed: {number}"))
+    allocator = MagicMock(side_effect=AssertionError("Docker must not be reached"))
+    monkeypatch.setattr("pg_rehearse.orchestrator.DockerRuntime", allocator)
+    state = tmp_path / "runs"
+    arguments = [command, "--config", str(path)]
+    if command == "run":
+        arguments.extend(["--state-dir", str(state)])
+    result = CliRunner().invoke(app, arguments)
+    assert result.exit_code == 2, result.output
+    assert "invalid YAML value" in " ".join(result.output.split())
+    assert number[:100] not in result.output
+    allocator.assert_not_called()
+    assert not state.exists()
 
 
 @pytest.mark.parametrize(

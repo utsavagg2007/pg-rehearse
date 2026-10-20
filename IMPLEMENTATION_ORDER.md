@@ -263,7 +263,7 @@ publish evidence as job artifacts, and install working wheel/sdist distributions
 ## 18. Labeled evaluation and failure-path audit
 
 Status: implemented. The seven-case matrix matched actual outcomes and the complete
-444-case regression passed. See `evaluation/README.md`, `docs/audit.md`
+regression passed. See `evaluation/README.md`, `docs/audit.md`
 and `PROGRESS.md` for boundaries and actual verification.
 
 Modules: `evaluation/`, `tests/integration/`, `tests/e2e/`.

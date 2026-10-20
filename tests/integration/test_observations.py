@@ -462,3 +462,45 @@ print(execute_baseline(request).model_dump_json())
     assert receipt.completion == "partial" and len(receipt.benchmark.samples) == 1
     assert receipt.benchmark.samples[0].error_kind == "connection_error"
     clean(docker_client, directory)
+
+
+@pytest.mark.parametrize("failure", ["closed", "terminated"])
+def test_lost_plan_connection_is_infrastructure_failure_with_reports_and_cleanup(
+    docker_client: DockerClient,
+    rehearsal_project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    inject(
+        monkeypatch,
+        "plan_baseline",
+        f"""
+import io
+from pg_rehearse.worker import main
+original = psycopg.Connection.execute
+def disconnect(connection, query, *args, **kwargs):
+    if (isinstance(query, psycopg.sql.Composable)
+            and query.as_string(connection).startswith('EXPLAIN ')):
+        if {failure!r} == 'closed':
+            connection.close()
+        else:
+            with connect_as(request, 'workload') as killer:
+                row = killer.execute(
+                    'SELECT pg_terminate_backend(%s)', (connection.info.backend_pid,)
+                ).fetchone()
+                assert row == (True,)
+    return original(connection, query, *args, **kwargs)
+psycopg.Connection.execute = disconnect
+sys.stdin = io.TextIOWrapper(io.BytesIO(request.to_wire()))
+raise SystemExit(main())
+""",
+    )
+    result, directory = run_rehearsal(rehearsal_project / "plans.yml", state_dir=tmp_path / "runs")
+    assert result.exit_code == 3 and result.completion == "infrastructure_error"
+    assert result.verdict == "inconclusive" and result.cleanup == CleanupStatus.COMPLETE
+    saved = json.loads((directory / "report.json").read_text())
+    assert saved["completion"] == "infrastructure_error" and saved["verdict"] == "inconclusive"
+    assert (directory / "report.md").is_file() and (directory / "report.html").is_file()
+    assert (directory / "worker-evidence.json").is_file()
+    clean(docker_client, directory)

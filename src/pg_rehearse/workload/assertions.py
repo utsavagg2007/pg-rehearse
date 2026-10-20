@@ -20,7 +20,9 @@ def normalize(value: object) -> Scalar:
     if isinstance(value, float) and math.isfinite(value):
         return value
     if isinstance(value, Decimal) and value.is_finite():
-        return str(value)
+        value = value.copy_abs() if value.is_zero() else value
+        exponent = cast(int, value.as_tuple().exponent)
+        return format(value, "f") if exponent > 0 else str(value)
     if isinstance(value, datetime) and value.tzinfo is not None:
         return value.astimezone(UTC).isoformat()
     if isinstance(value, (date, datetime)):

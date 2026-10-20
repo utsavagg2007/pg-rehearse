@@ -8,7 +8,7 @@ from pg_rehearse.analysis.performance import compare_performance
 from pg_rehearse.analysis.plans import compare_plans
 from pg_rehearse.config import LoadedConfig
 from pg_rehearse.fixtures.template import template_identity
-from pg_rehearse.migration.catalog import catalog_verified
+from pg_rehearse.migration.catalog import catalog_verifications
 from pg_rehearse.models import (
     BranchEvidence,
     CleanupStatus,
@@ -147,8 +147,9 @@ def analyze(
             )
     applications = [result for receipt in experiments for result in receipt.applications]
     for receipt in experiments:
-        for step, document in zip(receipt.migrations, loaded.migration_sql, strict=False):
-            if not catalog_verified(step, document) and receipt.task not in {
+        catalogs = catalog_verifications(loaded, receipt.migrations)
+        for step in receipt.migrations:
+            if not catalogs[step.step_id] and receipt.task not in {
                 "benchmark",
                 "plan_candidate",
             }:

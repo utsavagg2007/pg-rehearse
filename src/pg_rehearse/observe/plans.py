@@ -47,6 +47,8 @@ def capture_plan(
         result.success = True
         result.committed = analyze and write_operation(operation)
     except psycopg.Error as exc:
+        if connection.broken or connection.closed:
+            raise
         result.error_kind = "sql_error"
         result.sqlstate = exc.sqlstate
     except ValueError:

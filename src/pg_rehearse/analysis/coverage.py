@@ -2,7 +2,7 @@
 
 from pg_rehearse.analysis.locks import lock_coverage
 from pg_rehearse.config import LoadedConfig
-from pg_rehearse.migration.catalog import catalog_verified
+from pg_rehearse.migration.catalog import catalog_verifications
 from pg_rehearse.models import ContractSpec, Coverage
 from pg_rehearse.rollout.apps import application_plan
 from pg_rehearse.rollout.phases import rollout_plan
@@ -68,9 +68,9 @@ def coverage_for(loaded: LoadedConfig, evidence: RehearsalEvidence) -> Coverage:
             completed.extend(lock_coverage(experiment.contention).completed)
         completed.extend(f"migration/{phase}/{step.step_id}" for step in experiment.migrations)
         completed.extend(
-            f"catalog/{phase}/{step.step_id}"
-            for step, document in zip(experiment.migrations, loaded.migration_sql, strict=False)
-            if catalog_verified(step, document)
+            f"catalog/{phase}/{step_id}"
+            for step_id, verified in catalog_verifications(loaded, experiment.migrations).items()
+            if verified
         )
         completed.extend(
             f"phase/{result.id}" for result in experiment.phases if result.completion == "complete"
